@@ -1,0 +1,398 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Post {
+  id          Int      @id @default(autoincrement())
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  @@index([name])
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  posts         Post[]
+  sessions      Session[]
+
+  // Simple authentication fields
+  userId        String?   @unique // User ID for login (alternative to name)
+  username      String?   @unique // Username for login
+  password      String?   // Password (plain text for now, will encrypt later)
+
+  // User role and status
+  role          String?   @default("PR") // Admin, Manager, POPR, PR
+  isActive      Boolean   @default(true) // Active status
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PurchaseRequestPO {
+  id            Int      @id @default(autoincrement())
+  prDocEntry    Int
+  prNo          Int
+  prDate        DateTime
+  prDueDate     DateTime
+  seriesName    String?
+  prRequester   String?
+  prDepartment  String?
+  prJobName     String?
+  prRemarks     String?
+  prStatus      String
+  poNo          Int?
+  poDescription String?
+  poQuantity    Decimal? @db.Decimal(19, 6)
+  poUnit        String?
+  poLineNum     Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([prDocEntry])
+  @@index([prNo])
+  @@index([poNo])
+  @@index([prDate])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model pr_lines {
+  id             Int       @id @default(autoincrement())
+  pr_doc_num     Int
+  line_num       Int
+  item_code      String?   @db.VarChar(100)
+  description    String?
+  quantity       Decimal?  @db.Decimal(19, 6)
+  line_status    String?   @db.VarChar(1)
+  line_date      DateTime? @db.Date
+  ocr_code       String?   @db.VarChar(50)
+  ocr_code2      String?   @db.VarChar(50)
+  ocr_code4      String?   @db.VarChar(50)
+  project        String?   @db.VarChar(100)
+  vendor_num     String?   @db.VarChar(100)
+  serial_num     String?   @db.VarChar(100)
+  has_po         Boolean?  @default(false)
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  pr_master      pr_master @relation(fields: [pr_doc_num], references: [doc_num], onDelete: Cascade, onUpdate: NoAction, map: "fk_pr_master")
+
+  @@unique([pr_doc_num, line_num, description], map: "uq_pr_line")
+  @@index([has_po], map: "idx_pr_lines_has_po")
+  @@index([item_code], map: "idx_pr_lines_item_code")
+  @@index([line_status], map: "idx_pr_lines_line_status")
+  @@index([pr_doc_num], map: "idx_pr_lines_pr_doc_num")
+  @@index([project], map: "idx_pr_lines_project")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model pr_master {
+  id              Int          @id @default(autoincrement())
+  doc_num         Int          @unique
+  req_name        String?      @db.VarChar(255)
+  department_name String?      @db.VarChar(255)
+  doc_date        DateTime     @db.Date
+  doc_due_date    DateTime?    @db.Date
+  doc_status      String?      @default("O") @db.VarChar(1)
+  update_date     DateTime?    @db.Timestamp(6)
+  create_date     DateTime?    @db.Timestamp(6)
+  req_date        DateTime?    @db.Date
+  series          Int?
+  series_name     String?      @db.VarChar(50)
+  last_sync_date  DateTime?    @default(now()) @db.Timestamp(6)
+  created_at      DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?    @default(now()) @db.Timestamp(6)
+  job_name        String?
+  remarks         String?
+  pr_lines        pr_lines[]
+  pr_po_link      pr_po_link[]
+
+  @@index([doc_status, doc_date, series_name], map: "idx_pr_master_composite")
+  @@index([doc_date], map: "idx_pr_master_doc_date")
+  @@index([doc_num], map: "idx_pr_master_doc_num")
+  @@index([doc_status], map: "idx_pr_master_doc_status")
+  @@index([series_name], map: "idx_pr_master_series_name")
+  @@index([update_date], map: "idx_pr_master_update_date")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model pr_po_link {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int
+  pr_line_description String?
+  po_doc_num          Int?
+  po_due_date         DateTime? @db.Date
+  po_line_description String?
+  po_quantity         Decimal?  @db.Decimal(19, 6)
+  po_unit             String?   @db.VarChar(50)
+  po_line_status      String?   @db.VarChar(1)
+  last_sync_date      DateTime? @default(now()) @db.Timestamp(6)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+  updated_at          DateTime? @default(now()) @db.Timestamp(6)
+  pr_master           pr_master @relation(fields: [pr_doc_num], references: [doc_num], onDelete: Cascade, onUpdate: NoAction, map: "fk_pr_master_link")
+
+  @@unique([pr_doc_num, pr_line_description, po_doc_num], map: "uq_pr_po_link")
+  @@index([po_doc_num], map: "idx_pr_po_link_po_doc_num")
+  @@index([po_line_status], map: "idx_pr_po_link_po_line_status")
+  @@index([pr_doc_num], map: "idx_pr_po_link_pr_doc_num")
+}
+
+model sync_change_log {
+  id             Int       @id @default(autoincrement())
+  sync_log_id    Int
+  change_type    String    @db.VarChar(50)
+  pr_no          Int
+  pr_description String?
+  po_no          Int?
+  po_description String?
+  old_status     String?   @db.VarChar(10)
+  new_status     String?   @db.VarChar(10)
+  details        Json?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  sync_log       sync_log  @relation(fields: [sync_log_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([change_type], map: "idx_sync_change_log_change_type")
+  @@index([created_at(sort: Desc)], map: "idx_sync_change_log_created_at")
+  @@index([pr_no], map: "idx_sync_change_log_pr_no")
+  @@index([sync_log_id], map: "idx_sync_change_log_sync_log_id")
+}
+
+/// Activity Trail - บันทึกการกระทำของผู้ใช้ทั้งหมด
+model activity_trail {
+  id             Int      @id @default(autoincrement())
+  user_id        String?  @db.VarChar(255)              // User ID (จาก session หรือ email)
+  user_name      String?  @db.VarChar(255)              // ชื่อผู้ใช้
+  ip_address     String?  @db.VarChar(50)               // IP Address
+  computer_name  String?  @db.VarChar(255)              // ชื่อเครื่องคอมพิวเตอร์
+  action         String   @db.VarChar(50)               // ประเภทการกระทำ (ใช้ enum แบบ constant)
+  description    String?  @db.Text                      // คำอธิบายการกระทำ (เช่น หมายเหตุที่ใส่)
+  pr_no          Int?                                   // PR Number (ถ้ามี)
+  po_no          Int?                                   // PO Number (ถ้ามี)
+  tracking_id    Int?                                   // Tracking ID (ถ้ามี)
+  metadata       Json?                                  // ข้อมูลเพิ่มเติม (JSON)
+  created_at     DateTime @default(now()) @db.Timestamp(6) // วันเวลา (ประเทศไทย)
+
+  @@index([user_id], map: "idx_activity_trail_user_id")
+  @@index([action], map: "idx_activity_trail_action")
+  @@index([pr_no], map: "idx_activity_trail_pr_no")
+  @@index([po_no], map: "idx_activity_trail_po_no")
+  @@index([computer_name], map: "idx_activity_trail_computer_name")
+  @@index([created_at(sort: Desc)], map: "idx_activity_trail_created_at")
+}
+
+/// Action Types สำหรับ activity_trail.action:
+/// - LOGIN: ล็อคอินเข้าระบบ
+/// - LOGOUT: ออกจากระบบ
+/// - VIEW_PR: ดูรายละเอียด PR
+/// - TRACK_PR: บันทึกการติดตาม PR
+/// - RESPONSE_PR: ตอบกลับการติดตาม PR
+/// - VIEW_PO: ดูรายละเอียด PO
+/// - TRACK_DELIVERY: ติดตามสถานะส่งของ/PO
+/// - SYNC_DATA: Sync ข้อมูลจาก SAP
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model sync_log {
+  id                Int               @id @default(autoincrement())
+  sync_date         DateTime?         @default(now()) @db.Timestamp(6)
+  sync_type         String?           @default("UPSERT") @db.VarChar(50)
+  records_processed Int?              @default(0)
+  pr_updated        Int?              @default(0)
+  pr_lines_updated  Int?              @default(0)
+  po_links_updated  Int?              @default(0)
+  duration_seconds  Decimal?          @db.Decimal(10, 2)
+  status            String?           @default("SUCCESS") @db.VarChar(20)
+  error_message     String?
+  last_update_date  DateTime?         @db.Timestamp(6)
+  sync_change_log   sync_change_log[]
+}
+
+// ข้อมูลเพิ่มเติมของ PO (วันที่ออก PO)
+model po_info {
+  id           Int       @id @default(autoincrement())
+  po_doc_num   Int       @unique
+  po_doc_date  DateTime  @db.Date
+  po_due_date  DateTime? @db.Date
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([po_doc_num])
+}
+
+// User Tracking Log สำหรับติดตามความเร่งด่วนและหมายเหตุจาก User
+model user_tracking_log {
+  id                      Int                       @id @default(autoincrement())
+  pr_doc_num              Int                       // เลขที่ PR ที่ติดตาม
+  urgency_level           String                    @db.VarChar(20) // ด่วนที่สุด, ด่วน, ปกติ
+  note                    String?                   // หมายเหตุจาก User
+  tracked_by              String?                   @db.VarChar(255) // ชื่อผู้ติดตาม (ถ้ามี auth)
+  tracked_at              DateTime                  @default(now()) @db.Timestamp(6) // วันเวลาที่ติดตาม
+  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  tracking_response_log   tracking_response_log[]
+
+  @@index([pr_doc_num])
+  @@index([urgency_level])
+  @@index([tracked_at])
+}
+
+// Tracking Response Log สำหรับบันทึกคำตอบจากฝ่ายจัดซื้อ
+model tracking_response_log {
+  id                Int                 @id @default(autoincrement())
+  tracking_id       Int                 // อ้างอิงถึง user_tracking_log
+  pr_doc_num        Int                 // เลขที่ PR (เก็บไว้เพื่อความสะดวกในการ query)
+  response_note     String?             // หมายเหตุการตอบกลับ
+  responded_by      String?             @db.VarChar(255) // ชื่อผู้ตอบกลับ
+  responded_at      DateTime            @default(now()) @db.Timestamp(6) // วันเวลาที่ตอบกลับ
+  created_at        DateTime?           @default(now()) @db.Timestamp(6)
+  user_tracking     user_tracking_log   @relation(fields: [tracking_id], references: [id], onDelete: Cascade)
+
+  @@index([tracking_id])
+  @@index([pr_doc_num])
+  @@index([responded_at])
+}
+
+// PR Attachments สำหรับเก็บไฟล์แนบของ PR
+model pr_attachments {
+  id                Int       @id @default(autoincrement())
+  pr_doc_num        Int       // เลขที่ PR
+  attachment_entry  Int       // AbsEntry จาก SAP
+  file_name         String    @db.VarChar(255)
+  src_path          String?   @db.Text
+  trgt_path         String?   @db.Text
+  file_ext          String?   @db.VarChar(50)
+  uploaded_date     DateTime? @db.Date // วันที่อัพโหลดจริงจาก SAP (DocumentDate)
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+
+  @@unique([pr_doc_num, attachment_entry, file_name])
+  @@index([pr_doc_num])
+}
+
+// PO Attachments สำหรับเก็บไฟล์แนบของ PO
+model po_attachments {
+  id                Int       @id @default(autoincrement())
+  po_doc_num        Int       // เลขที่ PO
+  attachment_entry  Int       // AbsEntry จาก SAP
+  file_name         String    @db.VarChar(255)
+  src_path          String?   @db.Text
+  trgt_path         String?   @db.Text
+  file_ext          String?   @db.VarChar(50)
+  uploaded_date     DateTime? @db.Date // วันที่อัพโหลดจริงจาก SAP (DocumentDate)
+  created_at        DateTime  @default(now()) @db.Timestamp(6)
+
+  @@unique([po_doc_num, attachment_entry, file_name])
+  @@index([po_doc_num])
+}
+
+// PO Master สำหรับเก็บข้อมูล Purchase Order
+model po_master {
+  id             Int       @id @default(autoincrement())
+  doc_num        Int       @unique
+  doc_date       DateTime  @db.Date
+  doc_due_date   DateTime? @db.Date
+  doc_status     String?   @db.VarChar(1)
+  update_date    DateTime? @db.Timestamp(6)
+  create_date    DateTime? @db.Timestamp(6)
+  req_date       DateTime? @db.Date
+  cancel_date    DateTime? @db.Date
+  canceled       String?   @db.VarChar(1)
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  po_lines       po_lines[]
+
+  @@index([doc_num])
+  @@index([doc_status])
+  @@index([doc_date])
+}
+
+// PO Lines สำหรับเก็บรายการสินค้าใน PO
+model po_lines {
+  id             Int       @id @default(autoincrement())
+  po_doc_num     Int
+  line_num       Int
+  item_code      String?   @db.VarChar(100)
+  description    String?
+  quantity       Decimal?  @db.Decimal(19, 6)
+  line_status    String?   @db.VarChar(1)
+  base_ref       Int?      // เลขที่ PR ที่อ้างอิง
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  po_master      po_master @relation(fields: [po_doc_num], references: [doc_num], onDelete: Cascade)
+
+  @@unique([po_doc_num, line_num, description])
+  @@index([po_doc_num])
+  @@index([base_ref])
+}
+
+// PO Delivery Tracking Log สำหรับติดตามการส่งของ
+model po_delivery_tracking_log {
+  id              Int       @id @default(autoincrement())
+  po_doc_num      Int       // เลขที่ PO
+  delivery_status String    @db.VarChar(20) // ปกติ, ไม่ปกติ, อื่นๆ
+  note            String?   // หมายเหตุ/เหตุผล
+  tracked_by      String?   @db.VarChar(255) // ชื่อผู้บันทึก
+  tracked_at      DateTime  @default(now()) @db.Timestamp(6) // วันเวลาที่บันทึก
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([po_doc_num])
+  @@index([tracked_at])
+}
+
+// PO Sync Log สำหรับเก็บประวัติการ sync PO
+model po_sync_log {
+  id               Int       @id @default(autoincrement())
+  sync_date        DateTime  @default(now()) @db.Timestamp(6)
+  sync_type        String    @db.VarChar(20) // FULL, INCREMENTAL
+  records_synced   Int?      @default(0)
+  duration_seconds Decimal?  @db.Decimal(10, 2)
+  status           String    @db.VarChar(20) // success, failed
+  error_message    String?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([sync_date])
+}
