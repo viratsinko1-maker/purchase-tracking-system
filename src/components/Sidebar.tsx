@@ -19,6 +19,11 @@ export default function Sidebar() {
       icon: "💬",
     },
     {
+      name: "PR Overview",
+      path: "/pr-overview",
+      icon: "📊",
+    },
+    {
       name: "PO Tracking",
       path: "/po-tracking",
       icon: "📦",

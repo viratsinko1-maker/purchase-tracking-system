@@ -39,9 +39,41 @@ export default async function handler(
       uncPath = uncPath.replace('//', '\\\\').replace(/\//g, '\\');
     }
 
+    // Debug logging
+    console.log('[Attachment API] Original path:', filePath);
+    console.log('[Attachment API] UNC path:', uncPath);
+    console.log('[Attachment API] Process user:', process.env.USERNAME || 'unknown');
+    console.log('[Attachment API] Node version:', process.version);
+    console.log('[Attachment API] Platform:', process.platform);
+
     // ตรวจสอบว่าไฟล์มีอยู่จริง
     if (!fs.existsSync(uncPath)) {
-      return res.status(404).json({ error: 'File not found', path: uncPath });
+      console.error('[Attachment API] File not found:', uncPath);
+
+      // ลองตรวจสอบ parent directory
+      const parentDir = path.dirname(uncPath);
+      const parentExists = fs.existsSync(parentDir);
+      console.log('[Attachment API] Parent directory exists:', parentExists);
+
+      if (parentExists) {
+        try {
+          const files = fs.readdirSync(parentDir);
+          console.log('[Attachment API] Files in parent directory:', files.length);
+        } catch (dirError) {
+          console.error('[Attachment API] Cannot read parent directory:', dirError);
+        }
+      }
+
+      return res.status(404).json({
+        error: 'File not found',
+        path: uncPath,
+        parentExists,
+        originalPath: filePath,
+        debug: {
+          user: process.env.USERNAME || 'unknown',
+          platform: process.platform,
+        }
+      });
     }
 
     // อ่านไฟล์
@@ -87,10 +119,25 @@ export default async function handler(
   } catch (error) {
     console.error('[Attachment API] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    // Log detailed error information
+    console.error('[Attachment API] Error details:', {
+      message: errorMessage,
+      code: errorCode,
+      stack: errorStack,
+    });
 
     return res.status(500).json({
       error: 'Failed to serve file',
       message: errorMessage,
+      code: errorCode,
+      debug: {
+        user: process.env.USERNAME || 'unknown',
+        platform: process.platform,
+        nodeVersion: process.version,
+      }
     });
   }
 }
