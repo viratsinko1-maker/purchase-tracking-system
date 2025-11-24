@@ -71,7 +71,20 @@
       "Bash(gh repo create:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(cmd //c \"del /f nul 2>nul || echo File removed or not found\")"
+      "Bash(cmd //c \"del /f nul 2>nul || echo File removed or not found\")",
+      "Bash(cmd //c \"taskkill /F /PID 10968 2>nul && echo Process killed\")",
+      "Bash(npx prisma db pull:*)",
+      "Bash(cmd //c \"taskkill /F /PID 1552 2>nul && echo Process killed\")",
+      "Bash(cmd //c \"cd /d D:\\VS\\network\\VS\\PR_PO\\test-github-clone && if exist .next (rmdir /s /q .next && echo Deleted .next folder) else (echo .next folder not found)\")",
+      "Bash(powershell -Command \"cd ''D:\\VS\\network\\VS\\PR_PO\\test-github-clone''; (Get-Content ''src\\pages\\api\\cron\\w-series-sync.ts'') -replace ''\\*/2'', ''every 2 hours'' | Set-Content ''src\\pages\\api\\cron\\w-series-sync.ts''\")",
+      "Bash(powershell -Command \"cd ''D:\\VS\\network\\VS\\PR_PO\\test-github-clone''; (Get-Content ''src\\server\\scheduler.ts'') -replace ''SELECT sync_pr_data'', ''-- SELECT sync_pr_data (DISABLED - function not implemented)'' -replace ''const result = await db.$queryRaw'', ''// const result = await db.$queryRaw'' | Set-Content ''src\\server\\scheduler.ts''\")",
+      "Bash(cmd //c \"cd /d D:\\VS\\network\\VS\\PR_PO\\test-github-clone &amp;&amp; if exist .next (rmdir /s /q .next &amp;&amp; echo Deleted .next folder) else (echo .next folder not found)\")",
+      "Bash(cmd //c \"cd /d D:\\VS\\network\\VS\\PR_PO\\test-github-clone && if exist node_modules\\.cache (rmdir /s /q node_modules\\.cache && echo Cleared cache) else (echo No cache)\")",
+      "Bash(cmd //c \"del /f D:\\VS\\network\\VS\\PR_PO\\test-github-clone\\src\\server\\scheduler.ts\")",
+      "Bash(cmd //c \"taskkill /F /PID 33732 2>nul && echo Process killed\")",
+      "Bash(copy auto-sync-scheduler.ts auto-sync-scheduler.ts.backup)",
+      "Bash(copy attachment-sync-scheduler.ts attachment-sync-scheduler.ts.backup)",
+      "Bash(cmd //c:*)"
     ],
     "deny": [],
     "ask": []

@@ -30,6 +30,12 @@ export default function Sidebar() {
       restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
     },
     {
+      name: "W Series",
+      path: "/w-series",
+      icon: "⚙️",
+      restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
+    },
+    {
       name: "Help",
       path: "/pr-help",
       icon: "❓",

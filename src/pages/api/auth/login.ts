@@ -36,6 +36,11 @@ export default async function handler(
       return res.status(401).json({ error: "Username หรือ Password ไม่ถูกต้อง" });
     }
 
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(403).json({ error: "บัญชีผู้ใช้ของคุณถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ" });
+    }
+
     // Log LOGIN activity
     try {
       const ipAddress = getClientIp(req);
@@ -74,6 +79,7 @@ export default async function handler(
         username: user.username,
         name: user.name,
         role: user.role,
+        isActive: user.isActive,
       },
     });
 

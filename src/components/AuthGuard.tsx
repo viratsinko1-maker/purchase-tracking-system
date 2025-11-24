@@ -27,6 +27,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       return;
     }
 
+    // ถ้าล็อกอินแล้วแต่ user ถูกปิดใช้งาน -> บังคับ logout
+    if (!loading && user && !user.isActive && !isPublicPage) {
+      alert("⚠️ บัญชีของคุณถูกปิดใช้งาน\n\nกรุณาติดต่อผู้ดูแลระบบ");
+      sessionStorage.removeItem("user");
+      setIsRedirecting(true);
+      void router.replace("/login");
+      return;
+    }
+
     // ถ้าล็อกอินแล้วแต่อยู่หน้า login -> redirect ไป pr-tracking
     if (!loading && user && router.pathname === "/login") {
       setIsRedirecting(true);

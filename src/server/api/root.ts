@@ -4,6 +4,7 @@ import { poRouter } from "~/server/api/routers/po";
 import { testRouter } from "~/server/api/routers/test";
 import { syncRouter } from "~/server/api/routers/sync";
 import { activityTrailRouter } from "~/server/api/routers/activityTrail";
+import { wSeriesRouter } from "~/server/api/routers/wSeries";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -18,6 +19,7 @@ export const appRouter = createTRPCRouter({
   test: testRouter,  // Test utilities
   sync: syncRouter,  // Auto-Sync Status & Control
   activityTrail: activityTrailRouter,  // Activity Trail Logging
+  wSeries: wSeriesRouter,  // W Series Tracking v1.0
 });
 
 // export type definition of API

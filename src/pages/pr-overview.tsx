@@ -29,6 +29,7 @@ export default function PROverviewPage() {
   const [delayFilters, setDelayFilters] = useState<string[]>([]); // Array: "0-7", "7-14", "14-30", "30-90", "90-180"
   const [isDelayDropdownOpen, setIsDelayDropdownOpen] = useState(false);
   const delayDropdownRef = useRef<HTMLDivElement>(null);
+  const [delaySortOrder, setDelaySortOrder] = useState<"asc" | "desc">("asc"); // State สำหรับการ sort คอลัมน์ล่าช้า (default: asc)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -98,6 +99,11 @@ export default function PROverviewPage() {
 
     setDateFrom(fromDate.toISOString().split("T")[0] as string);
     setDateTo(today.toISOString().split("T")[0] as string);
+  };
+
+  // ฟังก์ชันจัดการการ sort คอลัมน์ล่าช้า (สลับระหว่าง asc กับ desc)
+  const handleDelaySort = () => {
+    setDelaySortOrder(delaySortOrder === "asc" ? "desc" : "asc");
   };
 
   // คำนวณจำนวนวันล่าช้า
@@ -388,7 +394,7 @@ export default function PROverviewPage() {
             </div>
           ) : (() => {
             // Filter ข้อมูลตาม poFilters และ delayFilters
-            const filteredData = data.data.filter((pr: any) => {
+            let filteredData = data.data.filter((pr: any) => {
               // Filter ตาม PO status
               if (poFilters.length > 0) {
                 const poStatus = calculatePOStatus(pr.total_lines, pr.lines_with_po);
@@ -420,6 +426,18 @@ export default function PROverviewPage() {
               return true;
             });
 
+            // Sort ข้อมูลตามคอลัมน์ล่าช้า
+            filteredData = [...filteredData].sort((a: any, b: any) => {
+              const delayA = calculateDelayDays(a.doc_date);
+              const delayB = calculateDelayDays(b.doc_date);
+
+              if (delaySortOrder === "asc") {
+                return delayA - delayB; // น้อยไปมาก (ลูกศรขึ้น)
+              } else {
+                return delayB - delayA; // มากไปน้อย (ลูกศรลง)
+              }
+            });
+
             if (filteredData.length === 0) {
               return (
                 <div className="rounded-lg bg-white p-12 text-center shadow">
@@ -449,7 +467,31 @@ export default function PROverviewPage() {
                         สถานะ
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
-                        ล่าช้า (วัน)
+                        <button
+                          onClick={handleDelaySort}
+                          className="flex items-center justify-center w-full hover:text-gray-700 transition-colors"
+                        >
+                          <span>ล่าช้า (วัน)</span>
+                          <svg
+                            className="ml-1 h-4 w-4"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            {delaySortOrder === "asc" ? (
+                              <path
+                                fillRule="evenodd"
+                                d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"
+                                clipRule="evenodd"
+                              />
+                            ) : (
+                              <path
+                                fillRule="evenodd"
+                                d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L10 13.586l3.293-3.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            )}
+                          </svg>
+                        </button>
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         PO

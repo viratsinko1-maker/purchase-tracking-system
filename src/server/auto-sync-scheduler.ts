@@ -1,13 +1,14 @@
 /**
  * Auto Sync Scheduler สำหรับ PR และ PO
  *
- * - Full Sync ทุก 2 ชั่วโมง (120 นาที)
+ * - Full Sync ทุก 2 ชั่วโมง (ใช้ node-cron)
  * - รัน PR และ PO แบบ background
  * - มี status tracking เพื่อป้องกัน manual sync ซ้อนทับ
  */
 
 import { db } from '~/server/db';
 import { createCaller } from '~/server/api/root';
+import cron from 'node-cron';
 
 // Global sync status
 let isSyncInProgress = false;
@@ -127,20 +128,29 @@ export async function runFullAutoSync() {
 
 /**
  * Initialize Auto-Sync Scheduler
- * Runs every 2 hours (120 minutes)
+ * Runs every 2 hours using node-cron
+ * Timezone: Asia/Bangkok
  */
 export function initAutoSyncScheduler() {
-  const INTERVAL_MS = 120 * 60 * 1000; // 120 minutes in milliseconds
-
-  // Run immediately on startup (optional - ปิดไว้ก่อนเพื่อไม่รบกวน)
-  // runFullAutoSync();
-
-  // Schedule to run every 2 hours
-  setInterval(async () => {
-    console.log('[AUTO-SYNC] ⏰ Scheduled sync triggered');
+  // Schedule to run every 2 hours at :00 (00:00, 02:00, 04:00, etc.)
+  cron.schedule('0 */2 * * *', async () => {
+    const currentTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    console.log(`[AUTO-SYNC] ⏰ Scheduled sync triggered at ${currentTime}`);
     await runFullAutoSync();
-  }, INTERVAL_MS);
+  }, {
+    timezone: 'Asia/Bangkok'
+  });
 
   console.log('[AUTO-SYNC] ✅ Scheduler initialized - Full Sync will run every 2 hours');
-  console.log(`[AUTO-SYNC] Next sync will be at: ${new Date(Date.now() + INTERVAL_MS).toLocaleString('th-TH')}`);
+  console.log('[AUTO-SYNC] 📅 Schedule: Every 2 hours at :00 (00:00, 02:00, 04:00, ...)');
+
+  // แสดงเวลา sync ครั้งถัดไป
+  const now = new Date();
+  const nextHour = Math.ceil(now.getHours() / 2) * 2;
+  const nextSync = new Date(now);
+  nextSync.setHours(nextHour, 0, 0, 0);
+  if (nextSync <= now) {
+    nextSync.setHours(nextSync.getHours() + 2);
+  }
+  console.log(`[AUTO-SYNC] Next sync will be at: ${nextSync.toLocaleString('th-TH')}`);
 }

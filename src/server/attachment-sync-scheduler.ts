@@ -1,12 +1,13 @@
 /**
  * Attachment Sync Scheduler
- * - Sync PR & PO attachments ทุก 2 ชั่วโมง
+ * - Sync PR & PO attachments ทุก 2 ชั่วโมง (ใช้ node-cron)
  * - Full refresh (ลบ + ดึงใหม่) ทุกเที่ยงคืน (00:00)
  */
 
 import { syncPRAttachments } from '~/server/api/services/prAttachmentSync';
 import { syncPOAttachments } from '~/server/api/services/poAttachmentSync';
 import { db } from '~/server/db';
+import cron from 'node-cron';
 
 // Global sync status
 let isAttachmentSyncInProgress = false;
@@ -91,66 +92,59 @@ async function syncAttachments() {
 }
 
 /**
- * คำนวณเวลาถัดไปที่ต้องรอจนถึงเที่ยงคืน
- */
-function getMillisecondsUntilMidnight() {
-  const now = new Date();
-  const midnight = new Date();
-  midnight.setHours(24, 0, 0, 0); // เที่ยงคืนของวันถัดไป
-  return midnight.getTime() - now.getTime();
-}
-
-/**
  * Initialize Attachment Sync Scheduler
+ * Uses node-cron for precise scheduling
  */
 export function initAttachmentSyncScheduler() {
-  const INTERVAL_MS = 120 * 60 * 1000; // 120 minutes (2 hours)
-
   console.log('[ATTACHMENT-SYNC] ✅ Scheduler initialized');
 
-  // Schedule regular sync every 2 hours
-  setInterval(async () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
+  // Schedule regular sync every 2 hours at :30 (00:30, 02:30, 04:30, etc.)
+  // ขยับจาก :00 เป็น :30 เพื่อไม่ให้ชนกับ auto-sync
+  cron.schedule('30 */2 * * *', async () => {
+    const currentTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    console.log(`[ATTACHMENT-SYNC] ⏰ Scheduled sync triggered at ${currentTime}`);
 
-    // Skip ช่วงเที่ยงคืน (00:00-00:15) เพราะจะมี full refresh
-    if (hour === 0 && minute < 15) {
-      console.log('[ATTACHMENT-SYNC] ⏸️  Skipping regular sync during midnight refresh window');
-      return;
-    }
-
-    console.log('[ATTACHMENT-SYNC] ⏰ Scheduled sync triggered');
     try {
       await syncAttachments();
     } catch (error) {
       console.error('[ATTACHMENT-SYNC] Scheduled sync error:', error);
     }
-  }, INTERVAL_MS);
+  }, {
+    timezone: 'Asia/Bangkok'
+  });
 
-  console.log(`[ATTACHMENT-SYNC] 🕐 Regular sync: Every 2 hours`);
-  console.log(`[ATTACHMENT-SYNC] Next regular sync: ${new Date(Date.now() + INTERVAL_MS).toLocaleString('th-TH')}`);
+  console.log(`[ATTACHMENT-SYNC] 🕐 Regular sync: Every 2 hours at :30 (00:30, 02:30, 04:30, ...)`);
 
-  // Schedule midnight full refresh
-  const scheduleNextMidnightRefresh = () => {
-    const msUntilMidnight = getMillisecondsUntilMidnight();
-    const midnightTime = new Date(Date.now() + msUntilMidnight);
+  // Schedule midnight full refresh at 00:00
+  cron.schedule('0 0 * * *', async () => {
+    const currentTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    console.log(`[ATTACHMENT-SYNC] 🌙 Midnight full refresh triggered at ${currentTime}`);
 
-    console.log(`[ATTACHMENT-SYNC] 🌙 Midnight full refresh scheduled at: ${midnightTime.toLocaleString('th-TH')}`);
+    try {
+      await fullRefreshAttachments();
+    } catch (error) {
+      console.error('[ATTACHMENT-SYNC] Midnight refresh error:', error);
+    }
+  }, {
+    timezone: 'Asia/Bangkok'
+  });
 
-    setTimeout(async () => {
-      try {
-        await fullRefreshAttachments();
-      } catch (error) {
-        console.error('[ATTACHMENT-SYNC] Midnight refresh error:', error);
-      }
+  console.log(`[ATTACHMENT-SYNC] 🌙 Midnight full refresh: Daily at 00:00`);
 
-      // Schedule ครั้งต่อไปหลังจากทำเสร็จ
-      scheduleNextMidnightRefresh();
-    }, msUntilMidnight);
-  };
+  // แสดงเวลา sync ครั้งถัดไป
+  const now = new Date();
+  const nextHour = Math.floor(now.getHours() / 2) * 2;
+  const nextSync = new Date(now);
+  nextSync.setHours(nextHour, 30, 0, 0);
+  if (nextSync <= now) {
+    nextSync.setHours(nextSync.getHours() + 2);
+  }
+  console.log(`[ATTACHMENT-SYNC] Next regular sync: ${nextSync.toLocaleString('th-TH')}`);
 
-  scheduleNextMidnightRefresh();
+  // แสดงเวลา midnight refresh ครั้งถัดไป
+  const nextMidnight = new Date(now);
+  nextMidnight.setHours(24, 0, 0, 0);
+  console.log(`[ATTACHMENT-SYNC] Next midnight refresh: ${nextMidnight.toLocaleString('th-TH')}`);
 }
 
 /**

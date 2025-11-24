@@ -8,6 +8,7 @@ export interface User {
   username: string | null;
   name: string | null;
   role: string | null;
+  isActive: boolean;
 }
 
 export function useAuth() {

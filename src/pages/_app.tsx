@@ -9,14 +9,6 @@ import AuthGuard from "~/components/AuthGuard";
 
 import "~/styles/globals.css";
 
-// เริ่มต้น scheduler เมื่อ app เริ่มทำงาน (client-side)
-if (typeof window === 'undefined') {
-  // ทำงานฝั่ง server เท่านั้น
-  import('~/server/scheduler').then(({ initScheduler }) => {
-    initScheduler();
-  }).catch(console.error);
-}
-
 const geist = Geist({
   subsets: ["latin"],
 });
