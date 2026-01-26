@@ -39,8 +39,8 @@ export async function syncPRAttachments() {
         T1.SrcPath,
         T1.TrgtPath,
         T1.FileExt,
-        OPRQ.DocNum AS DocumentNumber,
-        OPRQ.DocDate AS DocumentDate
+        T1.Date AS UploadDate,
+        OPRQ.DocNum AS DocumentNumber
       FROM OATC T0
       INNER JOIN ATC1 T1 ON T0.AbsEntry = T1.AbsEntry
       LEFT JOIN OPRQ ON OPRQ.AtcEntry = T0.AbsEntry
@@ -59,9 +59,9 @@ export async function syncPRAttachments() {
     // Insert attachments (skip duplicates)
     for (const row of sapData) {
       try {
-        // แปลง DocumentDate เป็น date string (YYYY-MM-DD)
-        const uploadedDate = row.DocumentDate
-          ? new Date(row.DocumentDate).toISOString().split('T')[0]
+        // แปลง UploadDate เป็น date string (YYYY-MM-DD)
+        const uploadedDate = row.UploadDate
+          ? new Date(row.UploadDate).toISOString().split('T')[0]
           : null;
 
         await db.$executeRawUnsafe(`

@@ -12,15 +12,43 @@ interface User {
   isActive: boolean;
 }
 
+interface UserProduction {
+  id: string;
+  email: string;
+  userId: string | null;
+  username: string | null;
+  name: string | null;
+  password: string | null;
+  role: string;
+  isActive: boolean;
+  sourceId: string | null;
+  telegramChatId: string | null;
+  lastSyncAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type TabType = "user" | "user_production";
+
 export default function AdminUsersPage() {
   const { requireAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabType>("user");
+
+  // User state
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
+  // User Production state
+  const [usersProduction, setUsersProduction] = useState<UserProduction[]>([]);
+  const [loadingUsersProduction, setLoadingUsersProduction] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
   const [error, setError] = useState("");
 
   // Form states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUserProduction, setEditingUserProduction] = useState<UserProduction | null>(null);
   const [formData, setFormData] = useState({
     userId: "",
     username: "",
@@ -28,17 +56,17 @@ export default function AdminUsersPage() {
     password: "",
     role: "PR",
     isActive: true,
+    telegramChatId: "",
   });
 
   // Load users
   const loadUsers = async () => {
     try {
-      setLoading(true);
+      setLoadingUsers(true);
       const response = await fetch("/api/admin/users");
       const data = await response.json();
       if (response.ok) {
-        // เรียงตาม userId (null/undefined จะอยู่ท้ายสุด)
-        const sortedUsers = [...data.users].sort((a, b) => {
+        const sortedUsers = [...data.users].sort((a: User, b: User) => {
           const userIdA = a.userId || '';
           const userIdB = b.userId || '';
           return userIdA.localeCompare(userIdB);
@@ -51,36 +79,111 @@ export default function AdminUsersPage() {
       console.error("Load users error:", err);
       setError("เกิดข้อผิดพลาดในการโหลดข้อมูล");
     } finally {
-      setLoading(false);
+      setLoadingUsers(false);
+    }
+  };
+
+  // Load users production
+  const loadUsersProduction = async () => {
+    try {
+      setLoadingUsersProduction(true);
+      const response = await fetch("/api/admin/users-production");
+      const data = await response.json();
+      if (response.ok) {
+        const sortedUsers = [...data.users].sort((a: UserProduction, b: UserProduction) => {
+          const nameA = a.username || '';
+          const nameB = b.username || '';
+          return nameA.localeCompare(nameB, 'th');
+        });
+        setUsersProduction(sortedUsers);
+      } else {
+        setError(data.error || "ไม่สามารถโหลดข้อมูลผู้ใช้ Production ได้");
+      }
+    } catch (err) {
+      console.error("Load users production error:", err);
+      setError("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+    } finally {
+      setLoadingUsersProduction(false);
+    }
+  };
+
+  // Sync users from TMK_PDPJ01
+  const handleSyncProduction = async () => {
+    if (!confirm("ต้องการ Sync ข้อมูลผู้ใช้จาก TMK_PDPJ01 ใช่หรือไม่?")) {
+      return;
+    }
+
+    try {
+      setSyncing(true);
+      setError("");
+      const response = await fetch("/api/admin/users-production", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "ไม่สามารถ Sync ข้อมูลได้");
+        return;
+      }
+
+      alert(data.message);
+      await loadUsersProduction();
+    } catch (err) {
+      console.error("Sync error:", err);
+      setError("เกิดข้อผิดพลาดในการ Sync");
+    } finally {
+      setSyncing(false);
     }
   };
 
   useEffect(() => {
     requireAdmin();
     void loadUsers();
+    void loadUsersProduction();
   }, []);
 
   useEffect(() => {
     requireAdmin();
   }, [requireAdmin]);
 
-  // Open modal for create
+  // Open modal for create (User tab only)
   const handleCreate = () => {
     setEditingUser(null);
-    setFormData({ userId: "", username: "", name: "", password: "", role: "PR", isActive: true });
+    setFormData({ userId: "", username: "", name: "", password: "", role: "PR", isActive: true, telegramChatId: "" });
     setIsModalOpen(true);
   };
 
-  // Open modal for edit
-  const handleEdit = (user: User) => {
+  // Open modal for edit User
+  const handleEditUser = (user: User) => {
     setEditingUser(user);
+    setEditingUserProduction(null);
     setFormData({
       userId: user.userId || "",
       username: user.username || "",
       name: user.name || "",
-      password: "", // Don't show existing password
+      password: "",
       role: user.role || "PR",
       isActive: user.isActive,
+      telegramChatId: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  // Open modal for edit User Production
+  const handleEditUserProduction = (user: UserProduction) => {
+    setEditingUserProduction(user);
+    setEditingUser(null);
+    setFormData({
+      userId: user.email,
+      username: user.username || "",
+      name: user.name || "",
+      password: "",
+      role: user.role || "PR",
+      isActive: user.isActive,
+      telegramChatId: user.telegramChatId || "",
     });
     setIsModalOpen(true);
   };
@@ -91,27 +194,54 @@ export default function AdminUsersPage() {
     setError("");
 
     try {
-      const url = "/api/admin/users";
-      const method = editingUser ? "PUT" : "POST";
-      const body = editingUser
-        ? { id: editingUser.id, ...formData }
-        : formData;
+      if (editingUserProduction) {
+        // Update User Production
+        const response = await fetch("/api/admin/users-production", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingUserProduction.id,
+            username: formData.username,
+            name: formData.name,
+            password: formData.password || undefined,
+            role: formData.role,
+            isActive: formData.isActive,
+            telegramChatId: formData.telegramChatId,
+          }),
+        });
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+        const data = await response.json();
+        if (!response.ok) {
+          setError(data.error || "เกิดข้อผิดพลาด");
+          return;
+        }
 
-      const data = await response.json();
+        setIsModalOpen(false);
+        await loadUsersProduction();
+      } else {
+        // User table operations
+        const url = "/api/admin/users";
+        const method = editingUser ? "PUT" : "POST";
+        const body = editingUser
+          ? { id: editingUser.id, ...formData }
+          : formData;
 
-      if (!response.ok) {
-        setError(data.error || "เกิดข้อผิดพลาด");
-        return;
+        const response = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || "เกิดข้อผิดพลาด");
+          return;
+        }
+
+        setIsModalOpen(false);
+        await loadUsers();
       }
-
-      setIsModalOpen(false);
-      await loadUsers();
     } catch (err) {
       console.error("Submit error:", err);
       setError("เกิดข้อผิดพลาดในการบันทึก");
@@ -119,7 +249,7 @@ export default function AdminUsersPage() {
   };
 
   // Delete user
-  const handleDelete = async (user: User) => {
+  const handleDeleteUser = async (user: User) => {
     if (!confirm(`คุณต้องการลบผู้ใช้ "${user.username}" ใช่หรือไม่?`)) {
       return;
     }
@@ -144,6 +274,32 @@ export default function AdminUsersPage() {
     }
   };
 
+  // Delete user production
+  const handleDeleteUserProduction = async (user: UserProduction) => {
+    if (!confirm(`คุณต้องการลบผู้ใช้ "${user.username}" (${user.email}) อย่างถาวรใช่หรือไม่?\n\nการลบนี้ไม่สามารถกู้คืนได้!`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/users-production", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: user.id }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "ไม่สามารถลบผู้ใช้ได้");
+        return;
+      }
+
+      await loadUsersProduction();
+    } catch (err) {
+      console.error("Delete error:", err);
+      setError("เกิดข้อผิดพลาดในการลบ");
+    }
+  };
+
   return (
     <>
       <Head>
@@ -151,7 +307,7 @@ export default function AdminUsersPage() {
       </Head>
 
       <div className="min-h-screen bg-gray-50 p-6">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-7xl">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <h1 className="text-3xl font-bold text-gray-800">
@@ -162,7 +318,7 @@ export default function AdminUsersPage() {
                 onClick={() => window.location.href = '/activity-trail'}
                 className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700"
               >
-                📋 Activity
+                Activity
               </button>
               <button
                 onClick={() => window.location.href = '/sync-history'}
@@ -176,13 +332,39 @@ export default function AdminUsersPage() {
               >
                 PO Sync
               </button>
-              <button
-                onClick={handleCreate}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
-              >
-                ➕ เพิ่มผู้ใช้ใหม่
-              </button>
             </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="mb-4 border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab("user")}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === "user"
+                    ? "border-indigo-500 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                User (Local)
+                <span className="ml-2 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                  {users.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab("user_production")}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === "user_production"
+                    ? "border-indigo-500 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                User Production (TMK)
+                <span className="ml-2 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                  {usersProduction.length}
+                </span>
+              </button>
+            </nav>
           </div>
 
           {/* Error Message */}
@@ -192,99 +374,237 @@ export default function AdminUsersPage() {
             </div>
           )}
 
-          {/* Users Table */}
-          <div className="overflow-hidden rounded-lg bg-white shadow">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    User ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Username
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    ชื่อ
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Password
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    สิทธิ์
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Active
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    จัดการ
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-4 text-center">
-                      กำลังโหลด...
-                    </td>
-                  </tr>
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                      ไม่มีข้อมูลผู้ใช้
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                        {user.userId || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                        {user.username || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                        {user.name || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                        {user.password ? "••••••" : "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                          user.role === "Admin" ? "bg-purple-100 text-purple-800" :
-                          user.role === "Manager" ? "bg-blue-100 text-blue-800" :
-                          user.role === "POPR" ? "bg-green-100 text-green-800" :
-                          "bg-gray-100 text-gray-800"
-                        }`}>
-                          {user.role || "PR"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-center text-sm">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                          user.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                        }`}>
-                          {user.isActive ? "✓ Active" : "✗ Inactive"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="mr-3 text-indigo-600 hover:text-indigo-900"
-                        >
-                          แก้ไข
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          ลบ
-                        </button>
-                      </td>
+          {/* User Tab */}
+          {activeTab === "user" && (
+            <>
+              <div className="mb-4 flex justify-end">
+                <button
+                  onClick={handleCreate}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+                >
+                  + เพิ่มผู้ใช้ใหม่
+                </button>
+              </div>
+
+              <div className="overflow-hidden rounded-lg bg-white shadow">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        User ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Username
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        ชื่อ
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Password
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        สิทธิ์
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Active
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                        จัดการ
+                      </th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {loadingUsers ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4 text-center">
+                          กำลังโหลด...
+                        </td>
+                      </tr>
+                    ) : users.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                          ไม่มีข้อมูลผู้ใช้
+                        </td>
+                      </tr>
+                    ) : (
+                      users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {user.userId || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {user.username || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {user.name || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {user.password ? "••••••" : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              user.role === "Admin" ? "bg-purple-100 text-purple-800" :
+                              user.role === "Approval" ? "bg-pink-100 text-pink-800" :
+                              user.role === "Manager" ? "bg-blue-100 text-blue-800" :
+                              user.role === "POPR" ? "bg-green-100 text-green-800" :
+                              "bg-gray-100 text-gray-800"
+                            }`}>
+                              {user.role || "PR"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-center text-sm">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              user.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                            }`}>
+                              {user.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
+                            <button
+                              onClick={() => handleEditUser(user)}
+                              className="mr-3 text-indigo-600 hover:text-indigo-900"
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              ลบ
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* User Production Tab */}
+          {activeTab === "user_production" && (
+            <>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  ข้อมูลผู้ใช้จาก TMK_PDPJ01 - ใช้ Email เป็น Login และ Password เริ่มต้นคือ 1234
+                </p>
+                <button
+                  onClick={handleSyncProduction}
+                  disabled={syncing}
+                  className={`rounded-lg px-4 py-2 text-white ${
+                    syncing
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-orange-600 hover:bg-orange-700"
+                  }`}
+                >
+                  {syncing ? "กำลัง Sync..." : "Sync จาก TMK_PDPJ01"}
+                </button>
+              </div>
+
+              <div className="overflow-hidden rounded-lg bg-white shadow">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Email (Login)
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        ชื่อ
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Password
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        สิทธิ์
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Active
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Telegram ID
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Last Sync
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                        จัดการ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {loadingUsersProduction ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-4 text-center">
+                          กำลังโหลด...
+                        </td>
+                      </tr>
+                    ) : usersProduction.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                          ไม่มีข้อมูลผู้ใช้ - กดปุ่ม &quot;Sync จาก TMK_PDPJ01&quot; เพื่อดึงข้อมูล
+                        </td>
+                      </tr>
+                    ) : (
+                      usersProduction.map((user) => (
+                        <tr key={user.id} className={`hover:bg-gray-50 ${!user.isActive ? 'bg-gray-100 opacity-60' : ''}`}>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
+                            {user.email}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
+                            {user.username || user.name || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
+                            {user.password ? "••••••" : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              user.role === "Admin" ? "bg-purple-100 text-purple-800" :
+                              user.role === "Approval" ? "bg-pink-100 text-pink-800" :
+                              user.role === "Manager" ? "bg-blue-100 text-blue-800" :
+                              user.role === "POPR" ? "bg-green-100 text-green-800" :
+                              "bg-gray-100 text-gray-800"
+                            }`}>
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-center text-sm">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                              user.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                            }`}>
+                              {user.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 font-mono">
+                            {user.telegramChatId || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                            {user.lastSyncAt
+                              ? new Date(user.lastSyncAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
+                              : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-medium">
+                            <button
+                              onClick={() => handleEditUserProduction(user)}
+                              className="mr-3 text-indigo-600 hover:text-indigo-900"
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUserProduction(user)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              ลบ
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -293,28 +613,48 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-bold">
-              {editingUser ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้ใหม่"}
+              {editingUserProduction
+                ? "แก้ไขผู้ใช้ Production"
+                : editingUser
+                ? "แก้ไขผู้ใช้"
+                : "เพิ่มผู้ใช้ใหม่"}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  User ID (ไม่จำเป็น)
-                </label>
-                <input
-                  type="text"
-                  value={formData.userId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, userId: e.target.value })
-                  }
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="Admin, User01, etc."
-                />
-              </div>
+              {!editingUserProduction && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    User ID (ไม่จำเป็น)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.userId}
+                    onChange={(e) =>
+                      setFormData({ ...formData, userId: e.target.value })
+                    }
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    placeholder="Admin, User01, etc."
+                  />
+                </div>
+              )}
+
+              {editingUserProduction && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Email (Login)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.userId}
+                    disabled
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-gray-500"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Username <span className="text-red-500">*</span>
+                  {editingUserProduction ? "ชื่อ-นามสกุล" : "Username"} {!editingUserProduction && !editingUser && <span className="text-red-500">*</span>}
                 </label>
                 <input
                   type="text"
@@ -323,30 +663,32 @@ export default function AdminUsersPage() {
                     setFormData({ ...formData, username: e.target.value })
                   }
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  required
-                  placeholder="ชื่อผู้ใช้"
+                  required={!editingUserProduction && !editingUser}
+                  placeholder={editingUserProduction ? "ชื่อเต็ม" : "ชื่อผู้ใช้"}
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  ชื่อ-นามสกุล
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="ชื่อเต็ม"
-                />
-              </div>
+              {!editingUserProduction && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    ชื่อ-นามสกุล
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    placeholder="ชื่อเต็ม"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Password {!editingUser && <span className="text-red-500">*</span>}
-                  {editingUser && <span className="text-sm text-gray-500"> (เว้นว่างหากไม่ต้องการเปลี่ยน)</span>}
+                  Password {!editingUser && !editingUserProduction && <span className="text-red-500">*</span>}
+                  {(editingUser || editingUserProduction) && <span className="text-sm text-gray-500"> (เว้นว่างหากไม่ต้องการเปลี่ยน)</span>}
                 </label>
                 <input
                   type="text"
@@ -355,7 +697,7 @@ export default function AdminUsersPage() {
                     setFormData({ ...formData, password: e.target.value })
                   }
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  required={!editingUser}
+                  required={!editingUser && !editingUserProduction}
                   placeholder="รหัสผ่าน"
                 />
               </div>
@@ -373,11 +715,32 @@ export default function AdminUsersPage() {
                   required
                 >
                   <option value="Admin">Admin</option>
+                  <option value="Approval">Approval</option>
                   <option value="Manager">Manager</option>
                   <option value="POPR">POPR</option>
                   <option value="PR">PR</option>
                 </select>
               </div>
+
+              {editingUserProduction && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Telegram Chat ID
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.telegramChatId}
+                    onChange={(e) =>
+                      setFormData({ ...formData, telegramChatId: e.target.value })
+                    }
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    placeholder="เช่น 123456789"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    ใช้สำหรับส่งการแจ้งเตือน Telegram โดยตรง
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center">
                 <input

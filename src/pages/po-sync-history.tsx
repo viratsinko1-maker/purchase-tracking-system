@@ -2,16 +2,11 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 
-// Helper function สำหรับวันที่ (Default: วันนี้)
-const getDefaultDateRange = () => {
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
+// Import shared utils
+import { getTodayDateRange } from "~/utils/dateUtils";
 
-  return {
-    from: today,
-    to: today,
-  };
-};
+// Alias for backward compatibility
+const getDefaultDateRange = getTodayDateRange;
 
 export default function POSyncHistoryPage() {
   const router = useRouter();

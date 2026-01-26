@@ -319,21 +319,28 @@ export default function PODetailModal({ poNo, isOpen, onClose, hideTrackingButto
                               <svg className="h-5 w-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              {user?.role === 'POPR' ? (
-                                <span className="flex-1 text-sm font-medium text-gray-400 cursor-not-allowed truncate" title={fullFileName}>
-                                  {fullFileName}
-                                </span>
-                              ) : (
-                                <a
-                                  href={apiFileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition truncate"
-                                  title={fullFileName}
-                                >
-                                  {fullFileName}
-                                </a>
-                              )}
+                              <div className="flex-1 flex items-center gap-2">
+                                {user?.role === 'POPR' ? (
+                                  <span className="text-sm font-medium text-gray-400 cursor-not-allowed truncate" title={fullFileName}>
+                                    {fullFileName}
+                                  </span>
+                                ) : (
+                                  <a
+                                    href={apiFileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition truncate"
+                                    title={fullFileName}
+                                  >
+                                    {fullFileName}
+                                  </a>
+                                )}
+                                {attachment.uploaded_date && (
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                                    -- {formatDate(attachment.uploaded_date)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}

@@ -5,7 +5,6 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { notifyPODeliveryTracking } from "~/server/services/telegram";
-import { syncPOAttachments } from "~/server/api/services/poAttachmentSync";
 
 // SQL Server configuration (SAP B1)
 const sqlConfig = {
@@ -373,16 +372,7 @@ export const poRouter = createTRPCRouter({
       console.log('[PO SYNC] Refreshing materialized view...');
       await ctx.db.$executeRawUnsafe('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_po_summary');
 
-      // Sync PO Attachments
-      let attachmentSyncResult = null;
-      try {
-        console.log('[PO SYNC] Starting PO attachment sync...');
-        attachmentSyncResult = await syncPOAttachments();
-        console.log(`[PO SYNC] ✅ PO attachment sync completed: ${attachmentSyncResult.insertCount} inserted, ${attachmentSyncResult.skipCount} skipped`);
-      } catch (attachmentError) {
-        console.error('[PO SYNC] ⚠️ PO attachment sync failed (non-critical):', attachmentError);
-        // ไม่ throw error เพราะไม่ต้องการให้ attachment sync ล้มเหลวทำให้ main sync ล้มเหลวด้วย
-      }
+      // หมายเหตุ: PO Attachments จะถูก sync โดย Attachment-Sync Scheduler แยกต่างหาก (ทุก 2 ชม. ที่ :30)
 
       const syncEndTime = new Date();
       const durationSeconds = (syncEndTime.getTime() - syncStartTime.getTime()) / 1000;
@@ -550,6 +540,7 @@ export const poRouter = createTRPCRouter({
         trgt_path: string | null;
         file_ext: string | null;
         created_at: Date;
+        uploaded_date: Date | null;
       }>>(`
         SELECT
           id,
@@ -559,7 +550,8 @@ export const poRouter = createTRPCRouter({
           src_path,
           trgt_path,
           file_ext,
-          created_at
+          created_at,
+          uploaded_date
         FROM po_attachments
         WHERE po_doc_num = $1
         ORDER BY created_at DESC

@@ -23,6 +23,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
     if (!isOpen) {
       setSelectedPoNo(null);
       setExpandedTrackingId(null);
+      setShowApprovers(false);
     }
   }, [isOpen]);
 
@@ -49,9 +50,37 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
   // State สำหรับแสดง/ซ่อนฟอร์มบันทึกการติดตามใหม่
   const [showNewTrackingForm, setShowNewTrackingForm] = useState(false);
 
+  // State สำหรับแสดง/ซ่อนส่วนผู้อนุมัติ
+  const [showApprovers, setShowApprovers] = useState(false);
+
   // State สำหรับ Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
+  const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
+
+  // Fetch OCR codes for tooltip
+  useEffect(() => {
+    const fetchOcrCodes = async () => {
+      try {
+        const response = await fetch("/api/admin/ocr-codes");
+        const data = await response.json();
+        if (data.success && data.data) {
+          const map = new Map<string, string>();
+          data.data.forEach((item: { name: string; remarks: string | null }) => {
+            if (item.remarks) {
+              map.set(item.name, item.remarks);
+            }
+          });
+          setOcrCodeMap(map);
+        }
+      } catch (error) {
+        console.error("Error fetching OCR codes:", error);
+      }
+    };
+    void fetchOcrCodes();
+  }, []);
 
   const utils = api.useUtils();
 
@@ -69,6 +98,12 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
 
   // ดึงไฟล์แนบ PR
   const { data: attachments } = api.pr.getPRAttachments.useQuery(
+    { prNo },
+    { enabled: isOpen && prNo > 0 }
+  );
+
+  // ดึงข้อมูลการรับเอกสารและการอนุมัติ
+  const { data: documentReceipt } = api.pr.getDocumentReceipt.useQuery(
     { prNo },
     { enabled: isOpen && prNo > 0 }
   );
@@ -312,7 +347,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div>
                         <p className="text-sm text-gray-600">ผู้เปิด PR</p>
                         <p className="font-medium text-gray-900">{formatName(prData.req_name)}</p>
@@ -320,6 +355,10 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                       <div>
                         <p className="text-sm text-gray-600">หน่วยงาน</p>
                         <p className="font-medium text-gray-900">{prData.department || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">System Date (วันที่คีย์ข้อมูล)</p>
+                        <p className="font-medium text-gray-900">{formatDate(prData.create_date)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-600">วันที่เปิด PR</p>
@@ -337,7 +376,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         <p className="text-sm text-gray-600">ชื่องาน</p>
                         <p className="font-medium text-gray-900">{prData.job_name || "-"}</p>
                       </div>
-                      <div className="md:col-span-2">
+                      <div className="md:col-span-3">
                         <p className="text-sm text-gray-600">หมายเหตุ</p>
                         <p className="font-medium text-gray-900">{prData.remarks || "-"}</p>
                       </div>
@@ -354,6 +393,9 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Line</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">รหัสสินค้า</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">รายละเอียด</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">รหัสแผนก</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">เครื่องจักร</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">โครงการ</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">จำนวน</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">สถานะ</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">PO</th>
@@ -378,8 +420,36 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                           {line.description}
                                         </div>
                                       </td>
+                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
+                                        {line.ocr_code2 && (
+                                          <span
+                                            className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
+                                            title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
+                                          >
+                                            {line.ocr_code2}
+                                          </span>
+                                        )}
+                                        {!line.ocr_code2 && <span className="text-gray-400">-</span>}
+                                      </td>
+                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
+                                        {line.ocr_code4 && (
+                                          <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
+                                            {line.ocr_code4}
+                                          </span>
+                                        )}
+                                        {!line.ocr_code4 && <span className="text-gray-400">-</span>}
+                                      </td>
+                                      <td rowSpan={line.po_list.length} className="px-3 py-2 text-sm text-gray-600">
+                                        {line.project ? (
+                                          <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
+                                            {line.project}
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400">-</span>
+                                        )}
+                                      </td>
                                       <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
-                                        {formatNumber(line.quantity)}
+                                        {formatNumber(line.quantity)} {line.unit_msr || ""}
                                       </td>
                                       <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
                                         <span className={`inline-block rounded px-2 py-1 text-xs ${
@@ -440,8 +510,36 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                     {line.description}
                                   </div>
                                 </td>
+                                <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                  {line.ocr_code2 && (
+                                    <span
+                                      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
+                                      title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
+                                    >
+                                      {line.ocr_code2}
+                                    </span>
+                                  )}
+                                  {!line.ocr_code2 && <span className="text-gray-400">-</span>}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                  {line.ocr_code4 && (
+                                    <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
+                                      {line.ocr_code4}
+                                    </span>
+                                  )}
+                                  {!line.ocr_code4 && <span className="text-gray-400">-</span>}
+                                </td>
+                                <td className="px-3 py-2 text-sm text-gray-600">
+                                  {line.project ? (
+                                    <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
+                                      {line.project}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
                                 <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
-                                  {formatNumber(line.quantity)}
+                                  {formatNumber(line.quantity)} {line.unit_msr || ""}
                                 </td>
                                 <td className="whitespace-nowrap px-3 py-2 text-sm">
                                   <span className={`inline-block rounded px-2 py-1 text-xs ${
@@ -478,15 +576,22 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                               <svg className="h-5 w-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              <a
-                                href={apiFileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition truncate"
-                                title={fullFileName}
-                              >
-                                {fullFileName}
-                              </a>
+                              <div className="flex-1 flex items-center gap-2">
+                                <a
+                                  href={apiFileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition truncate"
+                                  title={fullFileName}
+                                >
+                                  {fullFileName}
+                                </a>
+                                {attachment.uploaded_date && (
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                                    -- {formatDate(attachment.uploaded_date)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -498,6 +603,157 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                     )}
                   </div>
 
+                  {/* Approvers Section - Collapsible */}
+                  {documentReceipt && (
+                    <div className="rounded-lg bg-white p-6 shadow">
+                      {/* Header with expand/collapse */}
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setShowApprovers(!showApprovers)}
+                      >
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                          <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                          </svg>
+                          สถานะการอนุมัติ <span className="text-sm font-normal text-gray-500">(กดเพื่อเปิด/ปิด)</span>
+                        </h3>
+                        <button
+                          className="p-1 rounded hover:bg-gray-100 transition"
+                          title={showApprovers ? "ซ่อนรายละเอียด" : "แสดงรายละเอียด"}
+                        >
+                          <svg
+                            className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${showApprovers ? 'rotate-180' : ''}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Expandable content */}
+                      {showApprovers && (
+                        <div className="mt-4 space-y-4">
+                          {/* Receipt Info */}
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">การรับเอกสาร</h4>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-gray-600">วันที่รับ:</span>{" "}
+                                <span className="font-medium">{documentReceipt.receipt_date ? formatDate(documentReceipt.receipt_date) : '-'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">ผู้รับ:</span>{" "}
+                                <span className="font-medium">{documentReceipt.received_by || '-'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Requester Approval */}
+                          <div className={`rounded-lg p-3 ${documentReceipt.requester_approval_at ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {documentReceipt.requester_approval_at ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-400">○</span>
+                              )}
+                              <h4 className="text-sm font-semibold text-purple-700">ผู้ขอซื้อ (Requester)</h4>
+                            </div>
+                            {documentReceipt.requester_approval_at ? (
+                              <div className="ml-5 text-sm">
+                                <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.requester_approval_by || '-'}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.requester_approval_at)}</span></p>
+                              </div>
+                            ) : (
+                              <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
+                            )}
+                          </div>
+
+                          {/* Line Approval */}
+                          <div className={`rounded-lg p-3 ${documentReceipt.line_approval_at ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {documentReceipt.line_approval_at ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-400">○</span>
+                              )}
+                              <h4 className="text-sm font-semibold text-blue-700">ผู้อนุมัติตามสายงาน (Line)</h4>
+                            </div>
+                            {documentReceipt.line_approval_at ? (
+                              <div className="ml-5 text-sm">
+                                <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.line_approval_by || '-'}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.line_approval_at)}</span></p>
+                              </div>
+                            ) : (
+                              <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
+                            )}
+                          </div>
+
+                          {/* Cost Center Approval */}
+                          <div className={`rounded-lg p-3 ${documentReceipt.cost_center_approval_at ? 'bg-green-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {documentReceipt.cost_center_approval_at ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-400">○</span>
+                              )}
+                              <h4 className="text-sm font-semibold text-green-700">ผู้อนุมัติ Cost Center</h4>
+                            </div>
+                            {documentReceipt.cost_center_approval_at ? (
+                              <div className="ml-5 text-sm">
+                                <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.cost_center_approval_by || '-'}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.cost_center_approval_at)}</span></p>
+                              </div>
+                            ) : (
+                              <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
+                            )}
+                          </div>
+
+                          {/* Procurement Approval */}
+                          <div className={`rounded-lg p-3 ${documentReceipt.procurement_approval_at ? 'bg-orange-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {documentReceipt.procurement_approval_at ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-400">○</span>
+                              )}
+                              <h4 className="text-sm font-semibold text-orange-700">งานจัดซื้อพัสดุ (Procurement)</h4>
+                            </div>
+                            {documentReceipt.procurement_approval_at ? (
+                              <div className="ml-5 text-sm">
+                                <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.procurement_approval_by || '-'}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.procurement_approval_at)}</span></p>
+                              </div>
+                            ) : (
+                              <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
+                            )}
+                          </div>
+
+                          {/* VPC Approval */}
+                          <div className={`rounded-lg p-3 ${documentReceipt.vpc_approval_at ? 'bg-indigo-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              {documentReceipt.vpc_approval_at ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-400">○</span>
+                              )}
+                              <h4 className="text-sm font-semibold text-indigo-700">VP-C (Final Approval)</h4>
+                            </div>
+                            {documentReceipt.vpc_approval_at ? (
+                              <div className="ml-5 text-sm">
+                                <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.vpc_approval_by || '-'}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.vpc_approval_at)}</span></p>
+                              </div>
+                            ) : (
+                              <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* การติดตาม PR - รวมฟอร์มบันทึกใหม่และประวัติเก่า */}
                   {!hideTrackingButtons && (
                     <div>
@@ -506,8 +762,8 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         {/* การ์ดสำหรับบันทึกการติดตามใหม่ */}
                         <div className="rounded-lg bg-white shadow">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-                            {/* ซ้าย: ฟอร์มบันทึกการติดตาม (ซ่อนสำหรับ role Manager) */}
-                            {user?.role !== 'Manager' && (
+                            {/* ซ้าย: ฟอร์มบันทึกการติดตาม */}
+                            {user?.role !== 'POPR' && (
                               <div className="border-r border-gray-200 pr-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <h4 className="text-sm font-semibold text-blue-700">📋 การติดตาม</h4>
@@ -654,7 +910,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             )}
 
                             {/* ขวา: พื้นที่ว่างหรือคำอธิบาย */}
-                            <div className={user?.role !== 'Manager' ? "pl-4" : ""}>
+                            <div className={user?.role !== 'POPR' ? "pl-4" : ""}>
                               <h4 className="text-sm font-semibold text-green-700 mb-3">💬 การตอบกลับ</h4>
                               <p className="text-sm text-gray-500 italic">
                                 เมื่อมีการติดตามแล้ว จะสามารถตอบกลับได้ที่นี่

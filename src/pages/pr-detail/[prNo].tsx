@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 
+// Import shared utils
+import { formatThaiDate } from "~/utils/dateUtils";
+import { formatName, formatNumber } from "~/utils/formatters";
+
+// Alias for backward compatibility
+const formatDate = (date: Date | string | null) => formatThaiDate(date, { year: 'numeric', month: 'long', day: 'numeric' });
+
 export default function PRDetail() {
   const router = useRouter();
   const { prNo } = router.query;
@@ -30,30 +37,6 @@ export default function PRDetail() {
       enabled: poNumbers.length > 0,
     }
   );
-
-  const formatDate = (date: Date | string | null) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleDateString("th-TH", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
-  const formatNumber = (num: number | null | string) => {
-    if (num === null || num === undefined) return "-";
-    return Number(num).toLocaleString("th-TH");
-  };
-
-  const formatName = (name: string | null) => {
-    if (!name) return "-";
-    // สลับจาก "นามสกุล, ชื่อ" เป็น "ชื่อ นามสกุล"
-    if (name.includes(',')) {
-      const parts = name.split(',').map(p => p.trim());
-      return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
-    }
-    return name;
-  };
 
   if (isLoading) {
     return (

@@ -4,6 +4,11 @@ import { api } from "~/utils/api";
 import { useAuth } from "~/hooks/useAuth";
 import PRDetailModal from "~/components/PRDetailModal";
 
+// Import shared utils
+import { formatThaiDate, formatThaiDateTime } from "~/utils/dateUtils";
+import { formatName } from "~/utils/formatters";
+import { getUrgencyStyle } from "~/utils/urgencyStyles";
+
 // Helper function สำหรับวันที่ (ไม่ใช้ default date range แล้ว - แสดงทุกวัน)
 const getDefaultDateRange = () => {
   return {
@@ -12,50 +17,9 @@ const getDefaultDateRange = () => {
   };
 };
 
-// Helper สำหรับจัดรูปแบบวันที่
-const formatDate = (date: Date) => {
-  return new Date(date).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
-const formatDateTime = (date: Date) => {
-  return new Date(date).toLocaleString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-// Helper สำหรับสลับชื่อ-นามสกุล
-const formatName = (name: string | null) => {
-  if (!name) return "-";
-  if (name.includes(',')) {
-    const parts = name.split(',').map(p => p.trim());
-    return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
-  }
-  return name;
-};
-
-// Helper สำหรับสีของ Urgency Level
-const getUrgencyStyle = (level: string) => {
-  switch (level) {
-    case 'ด่วนที่สุด':
-      return 'bg-red-100 text-red-800 border-red-200';
-    case 'ด่วน':
-      return 'bg-orange-100 text-orange-800 border-orange-200';
-    case 'ปกติ':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'ปิดแล้ว':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-  }
-};
+// Alias for backward compatibility
+const formatDate = formatThaiDate;
+const formatDateTime = formatThaiDateTime;
 
 export default function PRQAPage() {
   const { user } = useAuth();

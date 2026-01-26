@@ -24,6 +24,12 @@ export default function Sidebar() {
       icon: "📊",
     },
     {
+      name: "PR Approval",
+      path: "/pr-approval",
+      icon: "✅",
+      adminOnly: true, // แสดงเฉพาะ Approval และ Admin
+    },
+    {
       name: "PO Tracking",
       path: "/po-tracking",
       icon: "📦",
@@ -34,6 +40,11 @@ export default function Sidebar() {
       path: "/w-series",
       icon: "⚙️",
       restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
+    },
+    {
+      name: "Workflow",
+      path: "/workflow",
+      icon: "🔀",
     },
     {
       name: "Help",
@@ -51,8 +62,8 @@ export default function Sidebar() {
   // Filter menu items based on user role
   const visibleMenuItems = menuItems.filter((item) => {
     if (item.adminOnly) {
-      // Only show to Admin users
-      return user?.role === "Admin";
+      // Only show to Admin and Approval users
+      return user?.role === "Admin" || user?.role === "Approval";
     }
     if (item.restrictedFor && user?.role) {
       // Hide if user role is in restricted list

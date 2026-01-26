@@ -5,69 +5,10 @@ import { api } from "~/utils/api";
 import { useAuth } from "~/hooks/useAuth";
 import PODetailModal from "~/components/PODetailModal";
 
-// Helper function สำหรับวันที่
-const getDefaultDateRange = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  return {
-    from: firstDay.toISOString().split('T')[0]!,
-    to: lastDay.toISOString().split('T')[0]!,
-  };
-};
-
-// Helper สำหรับสีของ Delivery Status
-const getDeliveryStatusStyle = (status: string) => {
-  switch (status) {
-    case 'ปกติ':
-      return 'bg-green-100 text-green-800 border-green-200';
-    case 'ไม่ปกติ':
-      return 'bg-red-100 text-red-800 border-red-200';
-    case 'อื่นๆ':
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-    default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-  }
-};
-
-// Helper สำหรับพื้นหลังของหมายเหตุ/ผู้ติดตาม ตามสถานะการส่งของ
-const getDeliveryBgStyle = (status: string) => {
-  switch (status) {
-    case 'ปกติ':
-      return 'bg-green-50 text-green-900';
-    case 'ไม่ปกติ':
-      return 'bg-red-50 text-red-900';
-    case 'อื่นๆ':
-      return 'bg-gray-50 text-gray-900';
-    default:
-      return 'bg-gray-50 text-gray-900';
-  }
-};
-
-// Helper สำหรับเส้นกรอบการ์ดตามสถานะการส่งของ
-const getDeliveryBorderStyle = (status: string) => {
-  switch (status) {
-    case 'ปกติ':
-      return 'border-2 border-green-500';
-    case 'ไม่ปกติ':
-      return 'border-2 border-red-500';
-    case 'อื่นๆ':
-      return 'border-2 border-gray-500';
-    default:
-      return '';
-  }
-};
-
-// Helper สำหรับแสดงชื่อ
-const formatName = (name: string | null) => {
-  if (!name) return "-";
-  if (name.includes(',')) {
-    const parts = name.split(',').map(p => p.trim());
-    return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
-  }
-  return name;
-};
+// Import shared utils
+import { getDefaultDateRange } from "~/utils/dateUtils";
+import { formatName } from "~/utils/formatters";
+import { getDeliveryStatusStyle, getDeliveryBgStyle, getDeliveryBorderStyle } from "~/utils/deliveryStyles";
 
 export default function POTracking() {
   const { requireRole } = useAuth();

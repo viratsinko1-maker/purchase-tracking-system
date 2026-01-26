@@ -3,10 +3,17 @@
  * แสดงข้อมูล PR แบบตาราง เพื่อให้เห็นภาพรวมและสถานะของ PR แต่ละรายการ
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { api } from "~/utils/api";
 import Head from "next/head";
 import PRDetailModal from "~/components/PRDetailModal";
+import PRDocumentReceiptModal from "~/components/PRDocumentReceiptModal";
+import PODetailModal from "~/components/PODetailModal";
+
+// Import shared utils
+import { formatName } from "~/utils/formatters";
+import { useClickOutside } from "~/hooks/useClickOutside";
+import { ExpandedPRRow } from "~/components/pr-overview";
 
 export default function PROverviewPage() {
   const [dateFrom, setDateFrom] = useState(() => {
@@ -26,27 +33,20 @@ export default function PROverviewPage() {
   const [isPoDropdownOpen, setIsPoDropdownOpen] = useState(false);
   const poDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedPR, setSelectedPR] = useState<number | null>(null);
+  const [selectedPRForReceipt, setSelectedPRForReceipt] = useState<number | null>(null);
+  const [selectedPRData, setSelectedPRData] = useState<any>(null);
+  const [selectedPO, setSelectedPO] = useState<number | null>(null); // สำหรับเปิด PO Modal จาก expanded row
   const [delayFilters, setDelayFilters] = useState<string[]>([]); // Array: "0-7", "7-14", "14-30", "30-90", "90-180"
   const [isDelayDropdownOpen, setIsDelayDropdownOpen] = useState(false);
   const delayDropdownRef = useRef<HTMLDivElement>(null);
   const [delaySortOrder, setDelaySortOrder] = useState<"asc" | "desc">("asc"); // State สำหรับการ sort คอลัมน์ล่าช้า (default: asc)
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set()); // State สำหรับเก็บ PR ที่ expand อยู่
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (poDropdownRef.current && !poDropdownRef.current.contains(event.target as Node)) {
-        setIsPoDropdownOpen(false);
-      }
-      if (delayDropdownRef.current && !delayDropdownRef.current.contains(event.target as Node)) {
-        setIsDelayDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
+  // Close dropdown when clicking outside (using custom hook)
+  useClickOutside([
+    { ref: poDropdownRef, callback: () => setIsPoDropdownOpen(false) },
+    { ref: delayDropdownRef, callback: () => setIsDelayDropdownOpen(false) },
+  ]);
 
   // Query data
   const { data, isLoading, refetch } = api.pr.getAllSummary.useQuery({
@@ -95,7 +95,8 @@ export default function PROverviewPage() {
 
     const today = new Date();
     const fromDate = new Date();
-    fromDate.setDate(today.getDate() - maxDelay);
+    // เพิ่ม 10 วันเพื่อให้ตรงกับการคำนวณ delay ที่ลบ 10 ออก
+    fromDate.setDate(today.getDate() - (maxDelay + 10));
 
     setDateFrom(fromDate.toISOString().split("T")[0] as string);
     setDateTo(today.toISOString().split("T")[0] as string);
@@ -107,12 +108,22 @@ export default function PROverviewPage() {
   };
 
   // คำนวณจำนวนวันล่าช้า
-  const calculateDelayDays = (prDate: Date) => {
+  const calculateDelayDays = (createDate: Date, receiptDate: Date | null) => {
     const today = new Date();
-    const pr = new Date(prDate);
-    const diffTime = today.getTime() - pr.getTime();
+    let baseDate: Date;
+
+    // ถ้ามีวันรับเอกสารแล้ว ใช้วันรับเอกสาร ถ้าไม่มีใช้ System Date
+    if (receiptDate) {
+      baseDate = new Date(receiptDate);
+    } else {
+      baseDate = new Date(createDate);
+    }
+
+    const diffTime = today.getTime() - baseDate.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+
+    // ถ้าผลต่าง > 10 วัน ให้แสดง (ผลต่าง - 10) ถ้าไม่เกิน 10 วัน แสดง 0
+    return diffDays > 10 ? diffDays - 10 : 0;
   };
 
   // คำนวณสถานะ PO จาก mv_pr_summary
@@ -128,16 +139,17 @@ export default function PROverviewPage() {
     return status === "C";
   };
 
-  // สลับชื่อ-นามสกุล จาก "นามสกุล, ชื่อ" เป็น "ชื่อ นามสกุล"
-  const formatName = (name: string) => {
-    if (!name) return "-";
-    if (name.includes(",")) {
-      const parts = name.split(",").map(part => part.trim());
-      if (parts.length === 2) {
-        return `${parts[1]} ${parts[0]}`; // สลับจาก "นามสกุล, ชื่อ" เป็น "ชื่อ นามสกุล"
+  // Toggle expand/collapse row
+  const toggleExpandRow = (prNo: number) => {
+    setExpandedRows((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(prNo)) {
+        newSet.delete(prNo);
+      } else {
+        newSet.add(prNo);
       }
-    }
-    return name;
+      return newSet;
+    });
   };
 
   return (
@@ -414,7 +426,7 @@ export default function PROverviewPage() {
 
               // Filter ตาม delay range
               if (delayFilters.length > 0) {
-                const delayDays = calculateDelayDays(pr.doc_date);
+                const delayDays = calculateDelayDays(pr.create_date, pr.receipt_date);
                 const delayMatch = delayFilters.some((filter) => {
                   const [start, end] = filter.split("-").map(Number);
                   return delayDays >= (start ?? 0) && delayDays <= (end ?? 180);
@@ -423,13 +435,29 @@ export default function PROverviewPage() {
                 if (!delayMatch) return false;
               }
 
+              // Filter ตามชื่องาน
+              if (jobNameSearch.trim()) {
+                const jobName = pr.job_name || "";
+                if (!jobName.toLowerCase().includes(jobNameSearch.toLowerCase().trim())) {
+                  return false;
+                }
+              }
+
+              // Filter ตามชื่อผู้เปิด
+              if (createdBySearch.trim()) {
+                const reqName = pr.req_name || "";
+                if (!reqName.toLowerCase().includes(createdBySearch.toLowerCase().trim())) {
+                  return false;
+                }
+              }
+
               return true;
             });
 
             // Sort ข้อมูลตามคอลัมน์ล่าช้า
             filteredData = [...filteredData].sort((a: any, b: any) => {
-              const delayA = calculateDelayDays(a.doc_date);
-              const delayB = calculateDelayDays(b.doc_date);
+              const delayA = calculateDelayDays(a.create_date, a.receipt_date);
+              const delayB = calculateDelayDays(b.create_date, b.receipt_date);
 
               if (delaySortOrder === "asc") {
                 return delayA - delayB; // น้อยไปมาก (ลูกศรขึ้น)
@@ -451,6 +479,9 @@ export default function PROverviewPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 w-12">
+                        {/* คอลัมน์ลูกศร */}
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         เลข PR
                       </th>
@@ -462,6 +493,9 @@ export default function PROverviewPage() {
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         วันที่เปิด PR
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        วันที่รับเอกสาร
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         สถานะ
@@ -496,19 +530,17 @@ export default function PROverviewPage() {
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         PO
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        PO ล่าสุด
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        วันที่ PO ออก
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {filteredData.map((pr: any) => {
                     const isClosed = isPRClosed(pr.doc_status);
-                    const delayDays = calculateDelayDays(pr.doc_date);
+                    const delayDays = calculateDelayDays(pr.create_date, pr.receipt_date);
                     const poStatus = calculatePOStatus(pr.total_lines, pr.lines_with_po);
+                    const isExpanded = expandedRows.has(pr.doc_num);
 
                     // กำหนดสี PO status
                     let poStatusColor = "bg-red-100 text-red-800"; // ไม่มี PO เลย
@@ -519,11 +551,29 @@ export default function PROverviewPage() {
                     }
 
                     return (
-                      <tr
-                        key={pr.doc_num}
-                        className={isClosed ? "bg-gray-100" : "hover:bg-gray-50"}
-                      >
-                        <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
+                      <>
+                        <tr
+                          key={pr.doc_num}
+                          className={isClosed ? "bg-gray-100" : "hover:bg-gray-50"}
+                        >
+                          {/* คอลัมน์ลูกศร */}
+                          <td className="whitespace-nowrap px-2 py-3 text-center">
+                            <button
+                              onClick={() => toggleExpandRow(pr.doc_num)}
+                              className="inline-flex items-center justify-center w-6 h-6 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                              title={isExpanded ? "ย่อ" : "ขยาย"}
+                            >
+                              <svg
+                                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
                           <button
                             onClick={() => setSelectedPR(pr.doc_num)}
                             className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
@@ -538,11 +588,20 @@ export default function PROverviewPage() {
                           {formatName(pr.req_name)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
-                          {new Date(pr.doc_date).toLocaleDateString("th-TH", {
+                          {new Date(pr.create_date).toLocaleDateString("th-TH", {
                             year: "numeric",
                             month: "short",
                             day: "numeric",
                           })}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                          {pr.receipt_date
+                            ? new Date(pr.receipt_date).toLocaleDateString("th-TH", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "-"}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-center text-sm">
                           <span
@@ -565,19 +624,51 @@ export default function PROverviewPage() {
                             {poStatus.withPO}/{poStatus.total}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
-                          {pr.latest_po_num || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
-                          {pr.latest_po_date
-                            ? new Date(pr.latest_po_date).toLocaleDateString("th-TH", {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              })
-                            : "-"}
+                        <td className="whitespace-nowrap px-4 py-3 text-center">
+                          <button
+                            onClick={() => {
+                              setSelectedPRForReceipt(pr.doc_num);
+                              setSelectedPRData(pr);
+                            }}
+                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                              pr.receipt_date && (!pr.approval_status || pr.approval_status === 'Waiting')
+                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 focus:ring-yellow-500'
+                                : pr.receipt_date && pr.approval_status === 'Approve'
+                                ? 'bg-green-200 text-green-800 hover:bg-green-300 focus:ring-green-500'
+                                : pr.receipt_date && pr.approval_status === 'Reject'
+                                ? 'bg-red-100 text-red-800 hover:bg-red-200 focus:ring-red-500'
+                                : 'bg-green-50 text-green-700 hover:bg-green-100 focus:ring-green-500'
+                            }`}
+                            title={
+                              pr.receipt_date && (!pr.approval_status || pr.approval_status === 'Waiting')
+                                ? `รอยืนยัน - รับเอกสารเมื่อ: ${new Date(pr.receipt_date).toLocaleDateString('th-TH')}${pr.received_by ? ` โดย ${pr.received_by}` : ''}`
+                                : pr.receipt_date && pr.approval_status === 'Approve'
+                                ? `อนุมัติแล้ว - รับเอกสารเมื่อ: ${new Date(pr.receipt_date).toLocaleDateString('th-TH')}${pr.received_by ? ` โดย ${pr.received_by}` : ''}`
+                                : pr.receipt_date && pr.approval_status === 'Reject'
+                                ? `ปฏิเสธ - รับเอกสารเมื่อ: ${new Date(pr.receipt_date).toLocaleDateString('th-TH')}${pr.received_by ? ` โดย ${pr.received_by}` : ''}`
+                                : 'บันทึกการรับเอกสาร'
+                            }
+                          >
+                            {pr.receipt_date && (!pr.approval_status || pr.approval_status === 'Waiting')
+                              ? '⏳ รอยืนยัน'
+                              : pr.receipt_date && pr.approval_status === 'Approve'
+                              ? '✓ รับแล้ว'
+                              : pr.receipt_date && pr.approval_status === 'Reject'
+                              ? '❌ ปฏิเสธ'
+                              : '📋 รับเอกสาร'}
+                          </button>
                         </td>
                       </tr>
+                      {/* Expanded Row */}
+                      {isExpanded && (
+                        <ExpandedPRRow
+                          prNo={pr.doc_num}
+                          prSummary={pr}
+                          isExpanded={isExpanded}
+                          onPOClick={setSelectedPO}
+                        />
+                      )}
+                    </>
                     );
                   })}
                 </tbody>
@@ -599,6 +690,30 @@ export default function PROverviewPage() {
           prNo={selectedPR}
           isOpen={true}
           onClose={() => setSelectedPR(null)}
+        />
+      )}
+
+      {/* PR Document Receipt Modal */}
+      {selectedPRForReceipt && selectedPRData && (
+        <PRDocumentReceiptModal
+          prNo={selectedPRForReceipt}
+          prCreateDate={selectedPRData?.create_date ? (new Date(selectedPRData.create_date).toISOString().split('T')[0] ?? null) : null}
+          isOpen={true}
+          onClose={() => {
+            setSelectedPRForReceipt(null);
+            setSelectedPRData(null);
+            void refetch(); // Refresh data after closing modal
+          }}
+        />
+      )}
+
+      {/* PO Detail Modal (from expanded row) */}
+      {selectedPO && (
+        <PODetailModal
+          poNo={selectedPO}
+          isOpen={true}
+          onClose={() => setSelectedPO(null)}
+          hideTrackingButtons={false}
         />
       )}
     </>

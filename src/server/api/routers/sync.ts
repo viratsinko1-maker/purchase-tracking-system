@@ -3,7 +3,7 @@ import {
   createTRPCRouter,
   publicProcedure,
 } from "~/server/api/trpc";
-import { getSyncStatus, runFullAutoSync } from "~/server/auto-sync-scheduler";
+import { getSyncStatus, runFullAutoSync, runManualPRFullRefresh } from "~/server/auto-sync-scheduler";
 
 /**
  * Sync Router สำหรับ Auto-Sync Status และการควบคุม
@@ -27,5 +27,14 @@ export const syncRouter = createTRPCRouter({
    */
   manualSync: publicProcedure.mutation(async () => {
     return await runFullAutoSync();
+  }),
+
+  /**
+   * Manual PR Full Refresh - ล้างข้อมูล PR ทั้งหมดแล้วดึงใหม่
+   * ใช้เมื่อพบปัญหา data integrity (เช่น PR-PO link ไม่ตรงกัน)
+   * ⚠️ WARNING: จะ TRUNCATE ข้อมูล PR ทั้งหมดแล้วดึงใหม่จาก SAP
+   */
+  manualPRRefresh: publicProcedure.mutation(async () => {
+    return await runManualPRFullRefresh();
   }),
 });

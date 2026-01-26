@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useAuth } from "~/hooks/useAuth";
+import { api } from "~/utils/api";
+import { useRouter } from "next/router";
 
 export default function TopBar() {
+  const router = useRouter();
   const { user, logout } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
@@ -10,6 +13,16 @@ export default function TopBar() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Query pending approvals count
+  const { data: pendingCount = 0 } = api.pr.getMyPendingApprovalsCount.useQuery(
+    {
+      userId: user?.id || '',
+      userName: user?.name || undefined,
+      userRole: user?.role || undefined,
+    },
+    { enabled: !!user?.id, refetchInterval: 30000 } // Refetch every 30 seconds
+  );
 
   if (!user) {
     return null;
@@ -46,6 +59,7 @@ export default function TopBar() {
           userId: user.id,
           oldPassword,
           newPassword,
+          source: user.source,
         }),
       });
 
@@ -85,10 +99,42 @@ export default function TopBar() {
     setSuccess("");
   };
 
+  // Navigate to PR Approval page
+  const handleNotificationClick = () => {
+    void router.push('/pr-approval');
+  };
+
   return (
     <>
       <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md">
         <div className="container mx-auto flex items-center justify-end gap-4 px-4 py-3">
+          {/* Notification Bell - Navigate to /pr-approval */}
+          <button
+            onClick={handleNotificationClick}
+            className="relative rounded-full bg-white/20 p-2 text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
+            title={`รอการอนุมัติของฉัน (${pendingCount} รายการ)`}
+          >
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+            {/* Badge */}
+            {pendingCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                {pendingCount > 99 ? '99+' : pendingCount}
+              </span>
+            )}
+          </button>
+
           <div className="flex items-center gap-3">
             <span className="text-lg font-semibold">
               ชื่อ: {user.name || user.username || user.userId || "User"}
@@ -102,7 +148,7 @@ export default function TopBar() {
             onClick={() => setIsModalOpen(true)}
             className="rounded-md bg-white/20 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
           >
-            🔑 เปลี่ยนรหัสผ่าน
+            เปลี่ยนรหัสผ่าน
           </button>
 
           <button

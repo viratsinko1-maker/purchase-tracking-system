@@ -61,6 +61,79 @@ model User {
   sessions      Session[]
 }
 
+/// User Production - ดึงจาก TMK_PDPJ01.User
+model User_production {
+  id             String    @id @default(cuid())
+  email          String    @unique  // email จาก TMK_PDPJ01 (ใช้เป็น key)
+  userId         String?   @unique  // = email (สำหรับ login)
+  username       String?             // = name จาก TMK_PDPJ01 (สำหรับแสดงผล)
+  name           String?             // ชื่อเต็มจาก TMK_PDPJ01
+  password       String?             // default "1234" (hashed)
+  role           String    @default("PR") @db.VarChar(20)
+  isActive       Boolean   @default(true)
+  sourceId       String?             // original id จาก TMK_PDPJ01
+  telegramChatId String?             // Telegram Chat ID สำหรับแจ้งเตือนโดยตรง
+  lastSyncAt     DateTime? @db.Timestamp(6)
+  createdAt      DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamp(6)
+
+  @@index([email])
+  @@index([isActive])
+  @@map("user_production")
+}
+
+/// OCR Code and Name - ดึงจาก TMK_PRD.OUDP (Department/Cost Center)
+model OCR_codeandName {
+  id                   Int       @id @default(autoincrement())
+  code                 Int       @unique  // Code จาก OUDP (primary key ใน SAP)
+  name                 String    @unique  // Name จาก OUDP (ocr_code2 ใน pr_lines)
+  remarks              String?             // ชื่อหน่วยงาน/แผนก
+  father               Int?                // รหัส parent (สำหรับ hierarchy)
+  lineApproverId       String?             // ผู้อนุมัติตามสายงาน (FK -> User_production.id)
+  costCenterApproverId String?             // ผู้อนุมัติตาม Cost Center (FK -> User_production.id)
+  lastSyncAt           DateTime? @db.Timestamp(6)
+  createdAt            DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt            DateTime  @updatedAt @db.Timestamp(6)
+
+  @@index([name])
+  @@index([code])
+  @@map("ocr_code_and_name")
+}
+
+/// OCR User Assignment - เก็บความสัมพันธ์ระหว่าง OCR Code และ User Production
+/// สำหรับใช้ในระบบ Approval Workflow ของแต่ละหน่วยงาน
+model ocr_user_assignment {
+  id              Int       @id @default(autoincrement())
+  ocrCodeId       Int                           // FK ไปยัง OCR_codeandName.id
+  userProductionId String                        // FK ไปยัง User_production.id
+  role            String    @default("member") @db.VarChar(20)  // member, approver, head
+  createdAt       DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamp(6)
+  createdBy       String?   @db.VarChar(255)    // ผู้เพิ่ม
+
+  @@unique([ocrCodeId, userProductionId])
+  @@index([ocrCodeId])
+  @@index([userProductionId])
+}
+
+/// OCR Approver - เก็บผู้อนุมัติหลายคนสำหรับแต่ละ OCR Code
+/// approverType: "line" = ผู้อนุมัติตามสายงาน, "cost_center" = ผู้อนุมัติตาม Cost Center
+model ocr_approver {
+  id              Int       @id @default(autoincrement())
+  ocrCodeId       Int                           // FK ไปยัง OCR_codeandName.id
+  userProductionId String                        // FK ไปยัง User_production.id
+  approverType    String    @db.VarChar(20)     // "line" หรือ "cost_center"
+  priority        Int       @default(1)          // ลำดับความสำคัญ (1 = หลัก, 2+ = สำรอง)
+  createdAt       DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamp(6)
+  createdBy       String?   @db.VarChar(255)
+
+  @@unique([ocrCodeId, userProductionId, approverType])
+  @@index([ocrCodeId])
+  @@index([userProductionId])
+  @@index([approverType])
+}
+
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -104,6 +177,7 @@ model pr_lines {
   item_code      String?   @db.VarChar(100)
   description    String?
   quantity       Decimal?  @db.Decimal(19, 6)
+  unit_msr       String?   @db.VarChar(100)
   line_status    String?   @db.VarChar(1)
   line_date      DateTime? @db.Date
   ocr_code       String?   @db.VarChar(50)
@@ -524,6 +598,94 @@ model wo_master {
   @@index([wc_doc_num], map: "idx_wo_master_wc_doc_num")
   @@index([wo_doc_num], map: "idx_wo_master_wo_doc_num")
   @@index([wr_doc_num], map: "idx_wo_master_wr_doc_num")
+}
+
+/// PR Document Receipt - เก็บข้อมูลการรับเอกสาร PR ล่าสุด
+model pr_document_receipt {
+  id                     Int       @id @default(autoincrement())
+  pr_doc_num             Int       @unique
+  receipt_date           DateTime  @db.Date
+  receipt_datetime       DateTime? @db.Timestamp(6)  // วันเวลาที่กดยืนยัน (เวลาไทย)
+  received_by            String    @db.VarChar(255)
+  received_by_user_id    String?   @db.VarChar(255)
+  ocr_code2              String?   @db.VarChar(50)   // OCR Code2 ที่ใช้ดึงผู้อนุมัติ
+  line_approvers         Json?                        // ผู้อนุมัติตามสายงาน (snapshot)
+  cost_center_approvers  Json?                        // ผู้อนุมัติตาม Cost Center (snapshot)
+  // Individual approval tracking
+  // ผู้ขอซื้อ approval (ใครก็ได้สามารถ approve ได้)
+  requester_approval_by            String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (ผู้ขอซื้อ)
+  requester_approval_by_user_id    String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (ผู้ขอซื้อ)
+  requester_approval_at            DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (ผู้ขอซื้อ)
+  // ผู้อนุมัติตามสายงาน (มีกำหนดผู้อนุมัติที่แน่นอน)
+  line_approval_by            String?   @db.VarChar(255)  // ชื่อผู้อนุมัติตามสายงาน
+  line_approval_by_user_id    String?   @db.VarChar(255)  // User ID ผู้อนุมัติตามสายงาน
+  line_approval_at            DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติตามสายงาน
+  // ผู้อนุมัติตาม Cost Center (มีกำหนดผู้อนุมัติที่แน่นอน)
+  cost_center_approval_by          String?   @db.VarChar(255)  // ชื่อผู้อนุมัติตาม Cost Center
+  cost_center_approval_by_user_id  String?   @db.VarChar(255)  // User ID ผู้อนุมัติตาม Cost Center
+  cost_center_approval_at          DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติตาม Cost Center
+  // งานจัดซื้อพัสดุ (เฉพาะ role Manager)
+  procurement_approval_by          String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (งานจัดซื้อพัสดุ)
+  procurement_approval_by_user_id  String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (งานจัดซื้อพัสดุ)
+  procurement_approval_at          DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (งานจัดซื้อพัสดุ)
+  // VP-C (เฉพาะ role Approval)
+  vpc_approval_by                  String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (VP-C)
+  vpc_approval_by_user_id          String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (VP-C)
+  vpc_approval_at                  DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (VP-C)
+  created_at             DateTime? @default(now()) @db.Timestamp(6)
+  updated_at             DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([pr_doc_num], map: "idx_pr_document_receipt_pr_doc_num")
+  @@index([receipt_date], map: "idx_pr_document_receipt_receipt_date")
+  @@index([received_by_user_id], map: "idx_pr_document_receipt_user_id")
+}
+
+/// PR Document Receipt History - เก็บประวัติการแก้ไขวันที่รับเอกสาร (Audit Trail)
+model pr_document_receipt_history {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int
+  action              String    @db.VarChar(10)
+  edit_count          Int?      @default(0)
+  old_receipt_date    DateTime? @db.Date
+  new_receipt_date    DateTime  @db.Date
+  received_by         String    @db.VarChar(255)
+  received_by_user_id String?   @db.VarChar(255)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([pr_doc_num], map: "idx_pr_document_receipt_history_pr_doc_num")
+  @@index([action], map: "idx_pr_document_receipt_history_action")
+  @@index([created_at(sort: Desc)], map: "idx_pr_document_receipt_history_created_at")
+}
+
+/// PR Document Approval - เก็บข้อมูลการอนุมัติเอกสาร PR ล่าสุด
+model pr_document_approval {
+  id                   Int       @id @default(autoincrement())
+  pr_doc_num           Int       @unique
+  approval_status      String    @db.VarChar(20)
+  reason               String?   @db.Text
+  approved_by          String?   @db.VarChar(255)
+  approved_by_user_id  String?   @db.VarChar(255)
+  approved_at          DateTime  @default(now()) @db.Timestamp(6)
+  created_at           DateTime? @default(now()) @db.Timestamp(6)
+  updated_at           DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([pr_doc_num], map: "idx_pr_document_approval_pr_doc_num")
+  @@index([approval_status], map: "idx_pr_document_approval_status")
+}
+
+/// PR Document Approval History - เก็บประวัติการอนุมัติเอกสาร PR ทั้งหมด
+model pr_document_approval_history {
+  id                   Int       @id @default(autoincrement())
+  pr_doc_num           Int
+  approval_status      String    @db.VarChar(20)
+  reason               String?   @db.Text
+  approved_by          String?   @db.VarChar(255)
+  approved_by_user_id  String?   @db.VarChar(255)
+  approved_at          DateTime  @db.Timestamp(6)
+  created_at           DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([pr_doc_num], map: "idx_pr_document_approval_history_pr_doc_num")
+  @@index([created_at(sort: Desc)], map: "idx_pr_document_approval_history_created_at")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

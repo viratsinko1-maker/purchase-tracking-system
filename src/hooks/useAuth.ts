@@ -9,6 +9,7 @@ export interface User {
   name: string | null;
   role: string | null;
   isActive: boolean;
+  source?: "local" | "production";
 }
 
 export function useAuth() {
@@ -67,8 +68,8 @@ export function useAuth() {
   const requireAdmin = () => {
     if (!loading && !user) {
       void router.push("/login");
-    } else if (!loading && user && user.role !== "Admin") {
-      // Not admin - show error and redirect
+    } else if (!loading && user && user.role !== "Admin" && user.role !== "Approval") {
+      // Not admin or approval - show error and redirect
       alert("⚠️ คุณไม่มีสิทธิ์เข้าถึงหน้านี้\n\nโปรดติดต่อผู้ดูแลระบบ");
       void router.push("/pr-tracking");
     }
@@ -92,6 +93,6 @@ export function useAuth() {
     requireAdmin,
     requireRole,
     isAuthenticated: !!user,
-    isAdmin: user?.role === "Admin",
+    isAdmin: user?.role === "Admin" || user?.role === "Approval",
   };
 }

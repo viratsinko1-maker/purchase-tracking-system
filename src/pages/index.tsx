@@ -3,17 +3,8 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 
-// Helper function สำหรับวันที่
-const getDefaultDateRange = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  return {
-    from: firstDay.toISOString().split('T')[0],
-    to: lastDay.toISOString().split('T')[0],
-  };
-};
+// Import shared utils
+import { getDefaultDateRange } from "~/utils/dateUtils";
 
 export default function Home() {
   const router = useRouter();

@@ -2,6 +2,115 @@
 
 All notable changes to the PR Tracking System will be documented in this file.
 
+## [v3.0] - 2025-11-25
+
+### 📚 Documentation Overhaul - Comprehensive README
+
+**การปรับปรุง Documentation ครั้งใหญ่**
+
+### ✨ Features
+
+#### README.md Comprehensive Update
+- **เนื้อหาเพิ่มจาก 160 → 1,016 บรรทัด (+537%)**
+- **10 FAQ** - คำถามที่พบบ่อยพร้อมคำตอบละเอียด
+- **9 Troubleshooting Scenarios** - วิธีแก้ปัญหาต่างๆ
+- **3 Deployment Options** - Direct Run, Windows Service, Task Scheduler
+- **Database Schema แบบละเอียด** - ทุกตารางพร้อม field descriptions
+- **Use Cases & Workflow** - 3 use cases หลักพร้อม diagram
+- **Pages และฟีเจอร์** - รายละเอียด 5 หน้าหลัก
+
+#### เนื้อหาที่เพิ่ม
+
+**1. ภาพรวมระบบแบบละเอียด**
+- ข้อมูลที่ระบบจัดการ (PR, PO, Attachments, ฯลฯ)
+- สถาปัตยกรรมระบบ (ASCII diagram)
+- ฟีเจอร์ทั้งหมด 9 ข้อ
+- สถิติเชิงประสิทธิภาพ
+
+**2. การตั้งค่าแบบครบถ้วน**
+- การตั้งค่า PostgreSQL + SQL Server
+- Environment Variables พร้อมคำอธิบาย
+- Database Schema ทั้ง 7 tables
+- ความสัมพันธ์ระหว่างตาราง (ERD style)
+
+**3. การซิงค์ข้อมูล**
+- Incremental Sync vs Full Sync
+- Schedule ของ auto-sync (4 schedulers)
+- Performance comparison พร้อมตัวอย่าง
+
+**4. Pages และฟีเจอร์**
+- `/pr-tracking` - หน้าหลัก
+- `/pr-overview` - Dashboard
+- `/sync-history` - ประวัติการซิงค์
+- `/attachments` - จัดการไฟล์แนบ
+- PR Detail Modal
+
+**5. Use Cases และ Workflow**
+- 3 Use Cases: View Only, Reporting, Workflow
+- Workflow diagram แบบละเอียด (step-by-step)
+- ความสัมพันธ์ PR-PO (1:0, 1:1, 1:N)
+
+**6. FAQ (10 คำถาม)**
+- Q1: ทำไมมีตารางอื่นๆ (User, Account, Session)?
+- Q2: Incremental Sync vs Full Sync
+- Q3: ข้อมูลจะไม่ซ้ำใช่ไหม?
+- Q4: PR 1 อันมีหลาย PO จัดการยังไง?
+- Q5: ถ้าต้องการข้อมูล realtime ทำยังไง?
+- Q6: ทำไมไม่แก้ไขข้อมูลใน PostgreSQL?
+- Q7: ไฟล์แนบอยู่ที่ไหน?
+- Q8: ตรวจสอบว่า sync ทำงานหรือไม่?
+- Q9: Materialized View คืออะไร?
+- Q10: ต้อง refresh MV บ่อยแค่ไหน?
+
+**7. Troubleshooting (9 ปัญหา)**
+- ปัญหา 1: Port 2025 ถูกใช้งานแล้ว
+- ปัญหา 2: Database Connection Error
+- ปัญหา 3: ไม่แสดงข้อมูล / เว็บว่างเปล่า
+- ปัญหา 4: Sync ล้มเหลว / Connection Error
+- ปัญหา 5: UntrustedHost Error
+- ปัญหา 6: ไฟล์แนบไม่แสดง / ดาวน์โหลดไม่ได้
+- ปัญหา 7: Database Schema ไม่ตรง
+- ปัญหา 8: Build Error / TypeScript Error
+- ปัญหา 9: Slow Performance / Query ช้า
+
+**8. Deployment Guide**
+- Development setup
+- Production (3 options):
+  - Option 1: Direct Run (PM2)
+  - Option 2: Windows Service (node-windows)
+  - Option 3: Windows Task Scheduler
+- Environment Variables สำหรับ Production
+- Auto-sync Schedule configuration
+- Monitoring และ Logging (PM2)
+- Backup และ Restore
+- Security Checklist
+- Performance Optimization
+
+**9. เอกสารเสริม**
+- Version History (v1.x, v2.x, v3.0)
+- T3 Stack Resources
+- การพัฒนาต่อยอด
+- License
+
+### 📊 Statistics
+
+- **README บรรทัด**: 1,016 (เพิ่มจาก 160)
+- **หัวข้อหลัก**: 15 หัวข้อ
+- **FAQ**: 10 คำถาม
+- **Troubleshooting**: 9 ปัญหา
+- **Deployment Options**: 3 วิธี
+- **Database Tables Documented**: 7 tables
+
+### 💡 Benefits
+
+1. **ง่ายต่อการเข้าใจ**: Developer ใหม่สามารถเริ่มต้นได้ทันที
+2. **ครอบคลุม**: ทุกอย่างที่ต้องรู้อยู่ในที่เดียว
+3. **แก้ปัญหาเร็ว**: Troubleshooting guide ครบถ้วน
+4. **Production Ready**: Deployment guide 3 วิธี
+5. **เอกสารอ้างอิง**: สำหรับ maintenance ในอนาคต
+
+---
+
 ## [v1.1.0] - 2025-10-25
 
 ### 🚀 Major Improvements - Smart Sync Strategy + Sync History

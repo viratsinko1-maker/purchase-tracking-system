@@ -1,100 +1,20 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 import PRDetailModal from "~/components/PRDetailModal";
+import PRDocumentReceiptModal from "~/components/PRDocumentReceiptModal";
+import { useAuth } from "~/hooks/useAuth";
+import { PRCard, SyncModals } from "~/components/pr-tracking";
 
-// Helper function สำหรับวันที่
-const getDefaultDateRange = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  return {
-    from: firstDay.toISOString().split('T')[0]!,
-    to: lastDay.toISOString().split('T')[0]!,
-  };
-};
-
-// Helper สำหรับคำนวณวันที่ย้อนหลัง 12 เดือน
-const getDate12MonthsAgo = () => {
-  const date = new Date();
-  date.setMonth(date.getMonth() - 12);
-  return date.toISOString().split('T')[0]!;
-};
-
-// Helper สำหรับสีของ Urgency Level
-const getUrgencyStyle = (level: string) => {
-  switch (level) {
-    case 'ด่วนที่สุด':
-      return 'bg-red-100 text-red-800 border-red-200';
-    case 'ด่วน':
-      return 'bg-orange-100 text-orange-800 border-orange-200';
-    case 'ปกติ':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'ปิดแล้ว':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-  }
-};
-
-// Helper สำหรับพื้นหลังของหมายเหตุ/ผู้ติดตาม ตามระดับความเร่งด่วน
-const getUrgencyBgStyle = (level: string) => {
-  switch (level) {
-    case 'ด่วนที่สุด':
-      return 'bg-red-50 text-red-900';
-    case 'ด่วน':
-      return 'bg-orange-50 text-orange-900';
-    case 'ปกติ':
-      return 'bg-blue-50 text-blue-900';
-    case 'ปิดแล้ว':
-      return 'bg-gray-50 text-gray-900';
-    default:
-      return 'bg-gray-50 text-gray-900';
-  }
-};
-
-// Helper สำหรับเส้นกรอบการ์ดตามระดับความเร่งด่วน
-const getUrgencyBorderStyle = (level: string) => {
-  switch (level) {
-    case 'ด่วนที่สุด':
-      return 'border-2 border-red-500';
-    case 'ด่วน':
-      return 'border-2 border-orange-500';
-    case 'ปกติ':
-      return 'border-2 border-blue-500';
-    case 'ปิดแล้ว':
-      return 'border-2 border-black';
-    default:
-      return '';
-  }
-};
-
-// Helper สำหรับสลับชื่อ-นามสกุล (จาก "นามสกุล, ชื่อ" เป็น "ชื่อ นามสกุล")
-const formatName = (name: string | null) => {
-  if (!name) return "-";
-  if (name.includes(',')) {
-    const parts = name.split(',').map(p => p.trim());
-    return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
-  }
-  return name;
-};
-
-// Helper สำหรับแสดงเฉพาะชื่อจริง (ตัดนามสกุลออก)
-const getFirstName = (name: string | null) => {
-  if (!name) return "-";
-  if (name.includes(',')) {
-    const parts = name.split(',').map(p => p.trim());
-    return parts.length >= 2 ? parts[1] : name;
-  }
-  // ถ้าไม่มี comma ให้เอาคำแรก
-  const words = name.trim().split(/\s+/);
-  return words[0] || name;
-};
+// Import shared utils
+import { getDefaultDateRange } from "~/utils/dateUtils";
+import { getUrgencyStyle } from "~/utils/urgencyStyles";
+import { useSyncStatus } from "~/hooks/useSyncStatus";
 
 export default function PRTracking() {
   const router = useRouter();
+  const { user } = useAuth();
   const defaultDates = useMemo(() => getDefaultDateRange(), []);
 
   // State ธรรมดา
@@ -120,8 +40,7 @@ export default function PRTracking() {
   const [errorMessage, setErrorMessage] = useState("");
   const [showSyncingModal, setShowSyncingModal] = useState(false);
   const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
-  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
-  const wasAutoSyncingRef = useRef(false);
+  // Auto-sync status monitoring (replaced state with hook)
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false); // สำหรับ expand/collapse - เริ่มต้นซ่อนไว้
   const [sortBy, setSortBy] = useState<'pr_number' | 'tracking_date'>('pr_number'); // การเรียงลำดับ
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -141,6 +60,36 @@ export default function PRTracking() {
   // Modal state
   const [selectedPRNo, setSelectedPRNo] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Document Receipt Modal state
+  const [receiptModalPRNo, setReceiptModalPRNo] = useState<number | null>(null);
+  const [receiptModalCreateDate, setReceiptModalCreateDate] = useState<Date | string | null>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
+  const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
+
+  // Fetch OCR codes for tooltip
+  useEffect(() => {
+    const fetchOcrCodes = async () => {
+      try {
+        const response = await fetch("/api/admin/ocr-codes");
+        const data = await response.json();
+        if (data.success && data.data) {
+          const map = new Map<string, string>();
+          data.data.forEach((item: { name: string; remarks: string | null }) => {
+            if (item.remarks) {
+              map.set(item.name, item.remarks);
+            }
+          });
+          setOcrCodeMap(map);
+        }
+      } catch (error) {
+        console.error("Error fetching OCR codes:", error);
+      }
+    };
+    void fetchOcrCodes();
+  }, []);
 
   // ตรวจสอบว่าต้องใช้ช่วง 12 เดือนหรือไม่
   const need12MonthsRange = urgencyFilter.length > 0 ||
@@ -194,32 +143,15 @@ export default function PRTracking() {
   );
 
 
-  // Polling สำหรับตรวจสอบสถานะ Auto-Sync
-  const { data: syncStatus } = api.sync.getStatus.useQuery(undefined, {
-    refetchInterval: 5000, // Poll ทุก 5 วินาที
-    refetchIntervalInBackground: true,
-  });
-
-  // ตรวจสอบว่า Auto-Sync เสร็จสิ้นหรือไม่ และ auto-refresh
-  useEffect(() => {
-    if (!syncStatus) return;
-
-    const currentlyAutoSyncing = syncStatus.isInProgress;
-
-    // อัพเดท state
-    setIsAutoSyncing(currentlyAutoSyncing);
-
-    // ถ้า auto-sync เพิ่งเสร็จ (เปลี่ยนจาก true -> false)
-    if (wasAutoSyncingRef.current && !currentlyAutoSyncing) {
-      console.log('[PR-TRACKING] Auto-sync completed, refreshing data...');
+  // Auto-sync status monitoring using custom hook
+  const { isAutoSyncing } = useSyncStatus({
+    onSyncComplete: () => {
       if (shouldFetch) {
         void refetch();
       }
-    }
-
-    // เก็บสถานะปัจจุบันไว้เช็คครั้งต่อไป
-    wasAutoSyncingRef.current = currentlyAutoSyncing;
-  }, [syncStatus, shouldFetch, refetch]);
+    },
+    logPrefix: '[PR-TRACKING]',
+  });
 
   // Filter ข้อมูล PR ตาม PO Status, Urgency Level และ search filters
   const filteredData = useMemo(() => {
@@ -426,6 +358,27 @@ export default function PRTracking() {
     setSelectedPRNo(null);
   };
 
+  // เปิด Receipt Modal
+  const openReceiptModal = (
+    prNo: number,
+    createDate: Date | string | null,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation(); // ป้องกันการเปิด PR Detail Modal
+    setReceiptModalPRNo(prNo);
+    setReceiptModalCreateDate(createDate);
+    setIsReceiptModalOpen(true);
+  };
+
+  const closeReceiptModal = () => {
+    setIsReceiptModalOpen(false);
+    setReceiptModalPRNo(null);
+    setReceiptModalCreateDate(null);
+    // Refetch data หลังจาก approve เพื่อให้แสดงสถานะล่าสุด
+    void refetch();
+    void refetchTrackings();
+  };
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -440,19 +393,6 @@ export default function PRTracking() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isModalOpen]);
-
-  const formatNumber = (num: number | null | undefined) => {
-    if (!num && num !== 0) return "0";
-    return num.toLocaleString("th-TH");
-  };
-
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString("th-TH", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
 
   return (
     <>
@@ -905,177 +845,16 @@ export default function PRTracking() {
               <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
             </div>
           ) : filteredData && filteredData.length > 0 ? (
-            filteredData.map((pr) => {
-              const tracking = trackingsMap?.[pr.doc_num];
-
-              // คำนวณสินค้าที่ถูกปิดแล้วแต่ไม่มี PO (Closed lines without PO)
-              const totalLines = pr.total_lines || 0;
-              const linesWithPO = pr.lines_with_po || 0;
-              const pendingLines = pr.pending_lines || 0; // รายการที่ไม่มี PO (ไม่ว่าจะเปิดหรือปิด)
-
-              // ถ้า PR ถูกปิดแล้ว (doc_status = 'C') และยังมี pending_lines
-              // แสดงว่ามีรายการที่ถูกปิดโดยไม่มี PO
-              const closedWithoutPO = pr.doc_status === 'C' ? pendingLines : 0;
-
-              return (
-                <div
-                  key={pr.doc_num}
-                  onClick={() => openModal(pr.doc_num)}
-                  className={`cursor-pointer rounded-lg bg-white p-4 shadow transition hover:shadow-lg active:shadow-md ${tracking ? getUrgencyBorderStyle(tracking.urgency_level) : ''}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      {/* แถวแรก: PR #, Status, Urgency, วันที่ (ตัวเล็ก) */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                        <h3 className="text-lg font-bold text-blue-600">PR #{pr.doc_num}</h3>
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
-                          pr.doc_status === "O" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {pr.doc_status === "O" ? "Open" : "Closed"}
-                        </span>
-
-                        {/* แสดงระดับความเร่งด่วน */}
-                        {tracking && (
-                          <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium border ${getUrgencyStyle(tracking.urgency_level)}`}>
-                            {tracking.urgency_level}
-                          </span>
-                        )}
-
-                        {/* วันที่ (ตัวเล็กมาก) */}
-                        <span className="text-xs text-gray-500">
-                          {formatDate(pr.doc_date)} | ครบ: {formatDate(pr.doc_due_date)}
-                        </span>
-                      </div>
-
-                      {/* แถวที่สอง: ชื่องาน (ถ้ามี) */}
-                      {pr.job_name && (
-                        <p className="mt-1 text-sm text-gray-700"><span className="font-medium">งาน:</span> {pr.job_name}</p>
-                      )}
-
-                      {/* แถวที่สาม: ชื่อผู้เปิด • หน่วยงาน */}
-                      <p className="mt-0.5 text-sm text-gray-600">
-                        {formatName(pr.req_name)} • {pr.department_name || "-"}
-                      </p>
-
-                      {/* แสดงหมายเหตุและผู้ติดตาม */}
-                      {tracking && (tracking.tracked_at || tracking.note || tracking.tracked_by || tracking.latest_response) && (
-                        <div className={`mt-3 rounded-lg px-3 py-2 ${getUrgencyBgStyle(tracking.urgency_level)}`}>
-                          {/* วันเวลาติดตามล่าสุด */}
-                          {tracking.tracked_at && (
-                            <p className="text-xs font-semibold text-gray-700 mb-2">
-                              📅 ถามล่าสุด: {formatDate(tracking.tracked_at)} เวลา {new Date(tracking.tracked_at).toLocaleTimeString("th-TH", { hour: '2-digit', minute: '2-digit' })} น.
-                            </p>
-                          )}
-                          {/* หมายเหตุการติดตาม - แสดงแค่ 2 บรรทัด */}
-                          {tracking.note && (
-                            <p
-                              className="text-sm italic break-words line-clamp-2 cursor-help"
-                              title={tracking.note}
-                            >
-                              💬 {tracking.note}
-                            </p>
-                          )}
-                          {/* ผู้ติดตาม */}
-                          {tracking.tracked_by && (
-                            <p className="mt-1 text-xs truncate">
-                              👤 ติดตามโดย: {formatName(tracking.tracked_by)}
-                            </p>
-                          )}
-
-                          {/* การตอบกลับล่าสุด */}
-                          {tracking.latest_response && tracking.latest_response.response_note && (
-                            <div className="mt-2 pt-2 border-t border-gray-300">
-                              {/* วันเวลาตอบกลับล่าสุด */}
-                              {tracking.latest_response.responded_at && (
-                                <p className="text-xs font-semibold text-gray-700 mb-1">
-                                  📅 ตอบล่าสุด: {formatDate(tracking.latest_response.responded_at)} เวลา {new Date(tracking.latest_response.responded_at).toLocaleTimeString("th-TH", { hour: '2-digit', minute: '2-digit' })} น.
-                                </p>
-                              )}
-                              <p
-                                className="text-sm font-medium break-words line-clamp-2 cursor-help"
-                                title={tracking.latest_response.response_note}
-                              >
-                                ✉️ ตอบกลับ: {tracking.latest_response.response_note}
-                              </p>
-                              {tracking.latest_response.responded_by && (
-                                <p className="mt-1 text-xs truncate">
-                                  👨‍💼 ตอบโดย: {formatName(tracking.latest_response.responded_by)}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-3 border-t border-gray-100 pt-3">
-                    {/* Progress Bar - คำถามที่ถูกตอบ/คำถามทั้งหมด */}
-                    {tracking && tracking.total_questions > 0 && (
-                      <div className="mb-2 hidden md:block">
-                        <div className="flex justify-between text-xs text-gray-600 mb-1">
-                          <span>คำถาม</span>
-                          <span>{tracking.answered_questions}/{tracking.total_questions} ตอบแล้ว</span>
-                        </div>
-                        <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200 flex">
-                          {/* ส่วนที่ตอบแล้ว (เขียว) */}
-                          <div
-                            className="h-full bg-green-500 transition-all"
-                            style={{ width: `${(tracking.answered_questions / tracking.total_questions) * 100}%` }}
-                            title={`ตอบแล้ว: ${tracking.answered_questions} คำถาม`}
-                          ></div>
-                          {/* ส่วนที่ยังไม่ตอบ (ส้ม) - ส่วนที่เหลือ */}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stats - บนมือถือแสดงจำนวนคำถามด้วย */}
-                    <div className="flex items-center gap-3 text-xs flex-wrap">
-                      {/* จำนวนคำถาม - แสดงเฉพาะบนมือถือ */}
-                      {tracking && tracking.total_questions > 0 && (
-                        <div className="md:hidden">
-                          <span className="text-gray-600">คำถาม:</span>{" "}
-                          <span className="font-medium text-green-600">{tracking.answered_questions}/{tracking.total_questions}</span>
-                        </div>
-                      )}
-
-                      <div>
-                        <span className="text-gray-600">รายการ:</span>{" "}
-                        <span className="font-medium">{formatNumber(totalLines)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">มี PO:</span>{" "}
-                        <span className="font-medium text-green-600">{formatNumber(linesWithPO)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">รอ PO:</span>{" "}
-                        <span className="font-medium text-orange-600">{formatNumber(pendingLines)}</span>
-                      </div>
-                      {closedWithoutPO > 0 && (
-                        <div>
-                          <span className="text-gray-600">ถูกปิด:</span>{" "}
-                          <span className="font-medium text-red-600">{formatNumber(closedWithoutPO)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* แสดงเลข PO ที่เชื่อมกับ PR นี้ */}
-                    {pr.po_numbers && pr.po_numbers.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {pr.po_numbers.map((poNum: number) => (
-                          <span
-                            key={poNum}
-                            className="inline-block rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
-                          >
-                            PO #{poNum}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            filteredData.map((pr) => (
+              <PRCard
+                key={pr.doc_num}
+                pr={pr}
+                tracking={trackingsMap?.[pr.doc_num]}
+                ocrCodeMap={ocrCodeMap}
+                onCardClick={openModal}
+                onReceiptClick={openReceiptModal}
+              />
+            ))
           ) : (
             <div className="col-span-full rounded-lg bg-white p-8 text-center text-gray-500 shadow">
               ไม่พบข้อมูล PR
@@ -1098,76 +877,28 @@ export default function PRTracking() {
           />
         )}
 
-        {/* Loading Modal - แสดงเมื่อกำลัง Sync */}
-        {showSyncingModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <div className="flex flex-col items-center">
-                <div className="h-16 w-16 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
-                <h3 className="mt-4 text-lg font-bold text-gray-900">กำลังโหลดข้อมูล...</h3>
-                <p className="mt-2 text-sm text-gray-600 text-center">กรุณารอสักครู่ ระบบกำลังดึงข้อมูลจาก SAP</p>
-              </div>
-            </div>
-          </div>
+        {/* Document Receipt Modal */}
+        {receiptModalPRNo && (
+          <PRDocumentReceiptModal
+            prNo={receiptModalPRNo}
+            prCreateDate={receiptModalCreateDate}
+            isOpen={isReceiptModalOpen}
+            onClose={closeReceiptModal}
+          />
         )}
 
-        {/* Modals อื่นๆ */}
-        {showConfirmSync && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-bold">ยืนยันการ Sync</h3>
-              <p className="mt-2 text-gray-600">คุณต้องการ Sync ข้อมูลใหม่จาก SAP หรือไม่?</p>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  onClick={() => setShowConfirmSync(false)}
-                  className="rounded-md bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={confirmSync}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                >
-                  ยืนยัน
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showSuccessModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-bold text-green-600">✓ Sync สำเร็จ</h3>
-              <p className="mt-2 text-gray-600">ข้อมูลได้รับการอัพเดตเรียบร้อยแล้ว</p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => setShowSuccessModal(false)}
-                  className="rounded-md bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-                >
-                  ปิด
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showErrorModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h3 className="text-lg font-bold text-red-600">✗ เกิดข้อผิดพลาด</h3>
-              <p className="mt-2 text-gray-600">{errorMessage}</p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => setShowErrorModal(false)}
-                  className="rounded-md bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-                >
-                  ปิด
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Sync Modals */}
+        <SyncModals
+          showSyncingModal={showSyncingModal}
+          showConfirmSync={showConfirmSync}
+          showSuccessModal={showSuccessModal}
+          showErrorModal={showErrorModal}
+          errorMessage={errorMessage}
+          onCancelSync={() => setShowConfirmSync(false)}
+          onConfirmSync={confirmSync}
+          onCloseSuccess={() => setShowSuccessModal(false)}
+          onCloseError={() => setShowErrorModal(false)}
+        />
       </div>
     </>
   );

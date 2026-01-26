@@ -164,7 +164,7 @@ BEGIN
     FOR line_record IN SELECT * FROM jsonb_array_elements(json_data->'pr_lines')
     LOOP
         INSERT INTO pr_lines (
-            pr_doc_num, line_num, item_code, description, quantity,
+            pr_doc_num, line_num, item_code, description, quantity, unit_msr,
             line_status, line_date, ocr_code, ocr_code2, ocr_code4,
             project, vendor_num, serial_num, updated_at
         ) VALUES (
@@ -173,6 +173,7 @@ BEGIN
             line_record->>'item_code',
             line_record->>'description',
             (line_record->>'quantity')::DECIMAL,
+            line_record->>'unit_msr',
             line_record->>'line_status',
             (line_record->>'line_date')::DATE,
             line_record->>'ocr_code',
@@ -187,6 +188,7 @@ BEGIN
             item_code = EXCLUDED.item_code,
             description = EXCLUDED.description,
             quantity = EXCLUDED.quantity,
+            unit_msr = EXCLUDED.unit_msr,
             line_status = EXCLUDED.line_status,
             line_date = EXCLUDED.line_date,
             ocr_code = EXCLUDED.ocr_code,
@@ -262,6 +264,7 @@ SELECT
     m.doc_status AS pr_status,
     m.series_name AS pr_series,
     m.update_date AS pr_update_date,
+    m.create_date AS pr_create_date,
     m.req_date AS pr_req_date,
     m.job_name AS pr_job_name,
     m.remarks AS pr_remarks,
@@ -299,6 +302,7 @@ SELECT
     m.doc_status,
     m.series_name,
     m.update_date,
+    m.create_date::DATE AS create_date,
     m.job_name,
     m.remarks,
     COUNT(DISTINCT l.id) AS total_lines,
@@ -311,12 +315,26 @@ SELECT
     END AS is_complete,
     ARRAY_AGG(DISTINCT po.po_doc_num) FILTER (WHERE po.po_doc_num IS NOT NULL) AS po_numbers,
     SUM(po.po_quantity) AS total_po_quantity,
-    ARRAY_AGG(DISTINCT l.line_num) FILTER (WHERE po.po_doc_num IS NULL AND l.line_status = 'O') AS pending_line_numbers
+    ARRAY_AGG(DISTINCT l.line_num) FILTER (WHERE po.po_doc_num IS NULL AND l.line_status = 'O') AS pending_line_numbers,
+    (
+        SELECT po2.po_doc_num
+        FROM pr_po_links po2
+        WHERE po2.pr_doc_num = m.doc_num
+        ORDER BY po2.po_due_date DESC NULLS LAST, po2.po_doc_num DESC
+        LIMIT 1
+    ) AS latest_po_num,
+    (
+        SELECT po2.po_due_date
+        FROM pr_po_links po2
+        WHERE po2.pr_doc_num = m.doc_num
+        ORDER BY po2.po_due_date DESC NULLS LAST, po2.po_doc_num DESC
+        LIMIT 1
+    ) AS latest_po_date
 FROM pr_master m
 LEFT JOIN pr_lines l ON m.doc_num = l.pr_doc_num
 LEFT JOIN pr_po_links po ON (l.pr_doc_num = po.pr_doc_num AND l.description = po.pr_line_description)
 GROUP BY m.doc_num, m.req_name, m.department_name, m.doc_date, m.doc_due_date,
-         m.doc_status, m.series_name, m.update_date, m.job_name, m.remarks;
+         m.doc_status, m.series_name, m.update_date, m.create_date, m.job_name, m.remarks;
 
 -- สร้าง index สำหรับ materialized view
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_pr_summary_doc_num ON mv_pr_summary(doc_num);

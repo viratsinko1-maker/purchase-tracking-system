@@ -127,6 +127,62 @@ export async function runFullAutoSync() {
 }
 
 /**
+ * Manual Full Refresh for PR ONLY
+ * ล้างข้อมูล PR ทั้งหมดแล้วดึงใหม่
+ * ใช้เมื่อพบปัญหา data integrity (เช่น PR-PO link ไม่ตรงกัน)
+ */
+export async function runManualPRFullRefresh() {
+  // ป้องกัน sync ซ้อนทับ
+  if (isSyncInProgress) {
+    console.log('[MANUAL-REFRESH] ⚠️ Sync already in progress, skipping...');
+    return {
+      success: false,
+      message: 'Sync already in progress',
+    };
+  }
+
+  isSyncInProgress = true;
+  currentSyncType = 'PR';
+  syncStartTime = new Date();
+
+  console.log(`[MANUAL-REFRESH] 🔄 Starting MANUAL PR FULL REFRESH at ${syncStartTime.toISOString()}`);
+  console.log('[MANUAL-REFRESH] 🗑️  This will TRUNCATE all PR data and re-sync from SAP');
+
+  try {
+    // เรียก PR sync ด้วย fullSync: true
+    // PR router จะทำการ TRUNCATE และดึงข้อมูลใหม่ทั้งหมด
+    await syncPR();
+
+    lastSyncEndTime = new Date();
+    const duration = (lastSyncEndTime.getTime() - syncStartTime.getTime()) / 1000;
+
+    console.log(`[MANUAL-REFRESH] ✅ PR Full Refresh completed in ${duration.toFixed(2)}s`);
+
+    return {
+      success: true,
+      duration,
+      startTime: syncStartTime,
+      endTime: lastSyncEndTime,
+      message: 'PR data has been completely refreshed',
+    };
+  } catch (error) {
+    console.error('[MANUAL-REFRESH] ❌ PR Full Refresh failed:', error);
+    lastSyncEndTime = new Date();
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      startTime: syncStartTime,
+      endTime: lastSyncEndTime,
+    };
+  } finally {
+    isSyncInProgress = false;
+    currentSyncType = null;
+    syncStartTime = null;
+  }
+}
+
+/**
  * Initialize Auto-Sync Scheduler
  * Runs every 2 hours using node-cron
  * Timezone: Asia/Bangkok

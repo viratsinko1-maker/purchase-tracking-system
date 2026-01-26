@@ -2,6 +2,9 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 
+// Import shared utils
+import { getTodayDateRange } from "~/utils/dateUtils";
+
 // Type สำหรับ session summary
 interface SessionSummary {
   newPRs: number;
@@ -10,16 +13,8 @@ interface SessionSummary {
   linkedPOs: number;
 }
 
-// Helper function สำหรับวันที่ (Default: วันนี้)
-const getDefaultDateRange = () => {
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
-
-  return {
-    from: today,
-    to: today,
-  };
-};
+// Alias for backward compatibility
+const getDefaultDateRange = getTodayDateRange;
 
 export default function SyncHistoryPage() {
   const router = useRouter();
@@ -29,6 +24,7 @@ export default function SyncHistoryPage() {
   const [dateTo, setDateTo] = useState(defaultDates.to);
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const [showFullSyncConfirm, setShowFullSyncConfirm] = useState(false);
+  const [showPRRefreshConfirm, setShowPRRefreshConfirm] = useState(false);
 
   const { data, isLoading, error, refetch } = api.pr.getSyncHistory.useQuery({
     dateFrom,
@@ -47,12 +43,32 @@ export default function SyncHistoryPage() {
     },
   });
 
+  const prRefreshMutation = api.sync.manualPRRefresh.useMutation({
+    onSuccess: () => {
+      void refetch();
+      setShowPRRefreshConfirm(false);
+      alert('PR Full Refresh สำเร็จ! ข้อมูล PR ถูกล้างและดึงใหม่แล้ว');
+    },
+    onError: (error) => {
+      alert(`PR Full Refresh ล้มเหลว: ${error.message}`);
+      setShowPRRefreshConfirm(false);
+    },
+  });
+
   const handleFullSync = () => {
     setShowFullSyncConfirm(true);
   };
 
   const confirmFullSync = () => {
     syncMutation.mutate({ fullSync: true });
+  };
+
+  const handlePRRefresh = () => {
+    setShowPRRefreshConfirm(true);
+  };
+
+  const confirmPRRefresh = () => {
+    prRefreshMutation.mutate();
   };
 
   // Toggle expand/collapse
@@ -157,6 +173,13 @@ export default function SyncHistoryPage() {
           </div>
           <div className="flex gap-3">
             <button
+              onClick={handlePRRefresh}
+              disabled={prRefreshMutation.isPending}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed"
+            >
+              {prRefreshMutation.isPending ? 'กำลังล้างข้อมูล...' : '🗑️ PR Full Refresh'}
+            </button>
+            <button
               onClick={handleFullSync}
               disabled={syncMutation.isPending}
               className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed"
@@ -171,6 +194,51 @@ export default function SyncHistoryPage() {
             </button>
           </div>
         </div>
+
+        {/* PR Full Refresh Confirmation Modal */}
+        {showPRRefreshConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                  <span className="text-2xl">🗑️</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">ยืนยัน PR Full Refresh</h3>
+                  <p className="text-sm text-gray-600">กรุณาอ่านคำเตือนด้านล่าง</p>
+                </div>
+              </div>
+
+              <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-gray-700">
+                <p className="mb-2 font-bold text-red-700">⚠️ คำเตือนสำคัญ:</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li className="font-medium text-red-700">จะลบข้อมูล PR ทั้งหมด (TRUNCATE)</li>
+                  <li>จากนั้นจะดึงข้อมูล PR ใหม่ทั้งหมดจาก SAP</li>
+                  <li>อาจใช้เวลานาน 1-2 นาที</li>
+                  <li className="font-medium">ใช้เมื่อพบปัญหา PR-PO link ไม่ตรงกัน</li>
+                  <li>ควรใช้เฉพาะเมื่อจำเป็นเท่านั้น</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={confirmPRRefresh}
+                  disabled={prRefreshMutation.isPending}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:bg-red-300"
+                >
+                  {prRefreshMutation.isPending ? 'กำลังล้างข้อมูล...' : 'ยืนยัน - ล้างและดึงใหม่'}
+                </button>
+                <button
+                  onClick={() => setShowPRRefreshConfirm(false)}
+                  disabled={prRefreshMutation.isPending}
+                  className="flex-1 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300 disabled:bg-gray-100"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Full Sync Confirmation Modal */}
         {showFullSyncConfirm && (

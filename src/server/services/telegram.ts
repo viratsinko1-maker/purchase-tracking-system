@@ -92,6 +92,8 @@ async function sendTelegramMessage(message: string): Promise<void> {
 
   if (!botToken || !chatId) {
     console.warn('[Telegram] Bot token or chat ID not configured');
+    console.warn('[Telegram] Bot Token:', botToken ? 'SET' : 'NOT SET');
+    console.warn('[Telegram] Chat ID:', chatId ? 'SET' : 'NOT SET');
     return;
   }
 
@@ -116,6 +118,52 @@ async function sendTelegramMessage(message: string): Promise<void> {
     }
   } catch (error) {
     console.error('[Telegram] Error sending message:', error);
+  }
+}
+
+/**
+ * ส่งข้อความไปยัง Telegram ของ user โดยตรง (ใช้ telegramChatId ของแต่ละคน)
+ */
+export async function sendTelegramMessageToUser(
+  chatId: string,
+  message: string
+): Promise<boolean> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!botToken) {
+    console.warn('[Telegram] Bot token not configured');
+    return false;
+  }
+
+  if (!chatId) {
+    console.warn('[Telegram] No chat ID provided');
+    return false;
+  }
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`[Telegram] Failed to send message to ${chatId}:`, error);
+      return false;
+    }
+
+    console.log(`[Telegram] Message sent successfully to user ${chatId}`);
+    return true;
+  } catch (error) {
+    console.error(`[Telegram] Error sending message to ${chatId}:`, error);
+    return false;
   }
 }
 
@@ -245,4 +293,115 @@ export async function notifyPODeliveryTracking(data: PODeliveryTrackingData): Pr
   const message = formatPODeliveryTrackingMessage(data);
   await sendTelegramMessage(message);
   await sendDivider();
+}
+
+/**
+ * ส่งข้อความแจ้งเตือนแบบกำหนดเอง (สำหรับการอนุมัติเอกสาร)
+ */
+export async function sendCustomNotification(message: string): Promise<void> {
+  await sendTelegramMessage(message);
+  await sendDivider();
+}
+
+/**
+ * Interface สำหรับข้อมูล PR ที่ล่าช้า
+ */
+interface DelayedPRGroup {
+  delay_milestone: number;
+  prs: Array<{
+    doc_num: number;
+    job_name: string | null;
+    req_name: string | null;
+    delay_days: number;
+  }>;
+}
+
+/**
+ * ส่งการแจ้งเตือน PR ที่ล่าช้า (Daily Report)
+ */
+export async function notifyDelayedPRs(groupedData: DelayedPRGroup[]): Promise<void> {
+  if (!groupedData || groupedData.length === 0) {
+    console.log('[Telegram] No delayed PRs to notify');
+    return;
+  }
+
+  const TELEGRAM_MAX_LENGTH = 4000; // Telegram limit is 4096, use 4000 for safety
+
+  // สร้างข้อความหัว
+  const header = '⚠️ <b>รายงาน PR ที่ล่าช้า</b>\n' +
+    `📅 วันที่: ${new Date().toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })}\n\n`;
+
+  let currentMessage = header;
+  const messages: string[] = [];
+
+  // วนลูปแต่ละกลุ่ม
+  groupedData.forEach((group, index) => {
+    const milestone = group.delay_milestone;
+    const count = group.prs.length;
+
+    // สร้างข้อความสำหรับกลุ่มนี้
+    let groupMessage = '';
+
+    // หัวข้อของแต่ละกลุ่ม
+    if (milestone === 1) {
+      groupMessage += `🔔 <b>PR ที่ล่าช้าครบ 1 วัน</b> (${count} รายการ)\n`;
+    } else {
+      groupMessage += `🔴 <b>PR ที่ล่าช้าครบ ${milestone} วัน</b> (${count} รายการ)\n`;
+    }
+
+    // รายการ PR ในกลุ่ม
+    group.prs.forEach((pr) => {
+      groupMessage += `PR #${pr.doc_num}`;
+      if (pr.job_name) {
+        groupMessage += ` - ${pr.job_name}`;
+      }
+      groupMessage += '\n';
+    });
+
+    // ถ้าไม่ใช่กลุ่มสุดท้าย ให้ใส่ขีดคั่น
+    if (index < groupedData.length - 1) {
+      groupMessage += '\n━━━━━━━━━━━━━━━━━━\n\n';
+    }
+
+    // ตรวจสอบว่าถ้าเพิ่มกลุ่มนี้แล้วเกินความยาวสูงสุดหรือไม่
+    if (currentMessage.length + groupMessage.length > TELEGRAM_MAX_LENGTH) {
+      // บันทึกข้อความปัจจุบัน และเริ่มข้อความใหม่
+      messages.push(currentMessage);
+      currentMessage = header + groupMessage;
+    } else {
+      // เพิ่มกลุ่มนี้เข้าไปในข้อความปัจจุบัน
+      currentMessage += groupMessage;
+    }
+  });
+
+  // เพิ่มข้อความสุดท้าย
+  if (currentMessage.length > header.length) {
+    messages.push(currentMessage);
+  }
+
+  // ส่งข้อความทั้งหมด
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!msg) continue; // Skip if message is undefined
+
+    if (messages.length > 1) {
+      // ถ้ามีหลายข้อความ ให้แสดงหมายเลขข้อความ
+      const suffix = `\n\n📄 ข้อความที่ ${i + 1}/${messages.length}`;
+      await sendTelegramMessage(msg + suffix);
+    } else {
+      await sendTelegramMessage(msg);
+    }
+
+    // รอ 1 วินาทีระหว่างข้อความเพื่อไม่ให้โดน rate limit
+    if (i < messages.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  await sendDivider();
+  console.log(`[Telegram] Delayed PRs notification sent (${messages.length} message(s))`);
 }
