@@ -12,12 +12,16 @@ interface AuthGuardProps {
 // Pages that don't require authentication
 const publicPages = ["/login"];
 
+// Pages that should not have layout (TopBar + Sidebar)
+const noLayoutPages = ["/print/pr/[prNo]"];
+
 export default function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const isPublicPage = publicPages.includes(router.pathname);
+  const isNoLayoutPage = noLayoutPages.includes(router.pathname) || router.pathname.startsWith("/print/");
 
   useEffect(() => {
     // ถ้ายังไม่ได้ล็อกอินและไม่ใช่หน้า public -> redirect ไปหน้า login
@@ -74,6 +78,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
   // Don't show TopBar on login page
   if (isPublicPage) {
+    return <>{children}</>;
+  }
+
+  // Don't show layout on print pages
+  if (isNoLayoutPage) {
     return <>{children}</>;
   }
 

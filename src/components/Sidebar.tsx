@@ -36,9 +36,9 @@ export default function Sidebar() {
       restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
     },
     {
-      name: "W Series",
-      path: "/w-series",
-      icon: "⚙️",
+      name: "Receive Good",
+      path: "/receive-good",
+      icon: "📥",
       restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
     },
     {

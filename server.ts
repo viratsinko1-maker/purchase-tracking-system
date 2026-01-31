@@ -15,7 +15,6 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { initAutoSyncScheduler } from './src/server/auto-sync-scheduler';
 import { initAttachmentSyncScheduler } from './src/server/attachment-sync-scheduler';
-import { initWSeriesScheduler } from './src/server/w-series-scheduler';
 import { initDelayedPRNotificationScheduler } from './src/server/delayed-pr-notification-scheduler';
 
 const execAsync = promisify(exec);
@@ -79,10 +78,6 @@ mountNetworkShare().then(() => {
   // เริ่มต้น Attachment Sync Scheduler (PR/PO attachments - ทุก 2 ชั่วโมง + midnight refresh)
   console.log('[SERVER] Initializing attachment sync scheduler...');
   initAttachmentSyncScheduler();
-
-  // เริ่มต้น W Series Sync Scheduler (W Series data - ทุก 2 ชั่วโมง)
-  console.log('[SERVER] Initializing W Series sync scheduler...');
-  initWSeriesScheduler();
 
   // เริ่มต้น Delayed PR Notification Scheduler (ส่งแจ้งเตือน PR ที่ล่าช้า - ทุกวันตอน 02:00)
   // TODO: Enable this when ready to use

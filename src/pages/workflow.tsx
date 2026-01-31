@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 
 interface OCRCode {
@@ -51,7 +52,8 @@ interface Approver {
 type TabType = "members" | "approvers";
 
 export default function Workflow() {
-  const { user, requireAuth } = useAuth();
+  const router = useRouter();
+  const { user, requireAuth, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("members");
   const [ocrCodes, setOcrCodes] = useState<OCRCode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +89,13 @@ export default function Workflow() {
   useEffect(() => {
     requireAuth();
   }, [requireAuth]);
+
+  // Admin-only access
+  useEffect(() => {
+    if (!authLoading && user && user.role !== 'Admin') {
+      void router.replace('/');
+    }
+  }, [user, authLoading, router]);
 
   // Fetch OCR Codes
   const fetchOCRCodes = async () => {
@@ -456,11 +465,38 @@ export default function Workflow() {
     return ocrApprovers.some((a) => a.userProductionId === userId && a.approverType === approverType);
   };
 
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-indigo-600 border-r-transparent"></div>
+          <p className="text-gray-600">กำลังตรวจสอบสิทธิ์...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in
   if (!user) {
     return null;
   }
 
-  const isAdmin = user.role === "Admin" || user.role === "Approval";
+  // Not admin - show access denied briefly before redirect
+  if (user.role !== 'Admin') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mb-4 text-6xl">🚫</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h1>
+          <p className="text-gray-600">หน้านี้สำหรับ Admin เท่านั้น</p>
+          <p className="text-sm text-gray-500 mt-2">กำลังนำทางกลับ...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isAdmin = true; // Only admins reach here
 
   return (
     <>

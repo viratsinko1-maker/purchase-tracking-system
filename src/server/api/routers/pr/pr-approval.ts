@@ -236,37 +236,44 @@ export const prApprovalRouter = createTRPCRouter({
           requester_approval_by: null,
           requester_approval_by_user_id: null,
           requester_approval_at: null,
-          updated_at: now,
         },
         line: {
           line_approval_by: null,
           line_approval_by_user_id: null,
           line_approval_at: null,
-          updated_at: now,
         },
         cost_center: {
           cost_center_approval_by: null,
           cost_center_approval_by_user_id: null,
           cost_center_approval_at: null,
-          updated_at: now,
         },
         procurement: {
           procurement_approval_by: null,
           procurement_approval_by_user_id: null,
           procurement_approval_at: null,
-          updated_at: now,
         },
         vpc: {
           vpc_approval_by: null,
           vpc_approval_by_user_id: null,
           vpc_approval_at: null,
-          updated_at: now,
         },
       };
 
+      // Cascade clear: ลบขั้นที่เลือก + ขั้นหลังๆ ทั้งหมด
+      const approvalOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'] as const;
+      const targetIndex = approvalOrder.indexOf(input.approvalType);
+
+      let combinedClearData: Record<string, unknown> = { updated_at: now };
+
+      for (let i = targetIndex; i < approvalOrder.length; i++) {
+        const stage = approvalOrder[i]!;
+        const stageData = clearDataMap[stage]!;
+        combinedClearData = { ...combinedClearData, ...stageData };
+      }
+
       const updated = await ctx.db.pr_document_receipt.update({
         where: { pr_doc_num: input.prNo },
-        data: clearDataMap[input.approvalType]!,
+        data: combinedClearData,
       });
 
       const approvalTypeLabelMap: Record<string, string> = {
@@ -277,10 +284,17 @@ export const prApprovalRouter = createTRPCRouter({
         vpc: '(VP-C)',
       };
 
+      // สร้าง message บอกว่าลบขั้นไหนบ้าง
+      const clearedStages = approvalOrder.slice(targetIndex);
+      const clearedStageNames = clearedStages.map(s => approvalTypeLabelMap[s]).join(', ');
+
       return {
         success: true,
         approvalType: input.approvalType,
-        message: `ล้างการอนุมัติ${approvalTypeLabelMap[input.approvalType]}แล้ว`,
+        clearedStages: clearedStages,
+        message: clearedStages.length > 1
+          ? `ล้างการอนุมัติแบบต่อเนื่อง: ${clearedStageNames}`
+          : `ล้างการอนุมัติ${approvalTypeLabelMap[input.approvalType]}แล้ว`,
         data: updated,
       };
     }),

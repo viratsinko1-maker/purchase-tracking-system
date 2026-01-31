@@ -4,3 +4,124 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+/* ========================================
+   PR Print Layout Styles
+   ======================================== */
+
+/* Print Page - Each page is a complete unit */
+.pr-print-page {
+  font-family: 'Sarabun', 'TH SarabunPSK', 'Noto Sans Thai', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #000;
+  background: white;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* A5 landscape: 210mm x 148mm, minus margins */
+  width: 190mm;
+  min-height: 132mm;
+  padding: 8mm 10mm;
+  box-sizing: border-box;
+}
+
+/* Print-specific styles */
+@media print {
+  /* Hide elements that shouldn't be printed */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Page setup - A5 Landscape */
+  @page {
+    size: A5 landscape;
+    margin: 8mm 10mm;
+  }
+
+  /* Force background colors to print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset body and html for print */
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .pr-print-page {
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    height: 100vh;
+    box-shadow: none;
+  }
+
+  /* Page break after */
+  .page-break-after {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+}
+
+/* Screen preview styles */
+@media screen {
+  .pr-print-page {
+    max-width: 210mm;
+    min-height: 148mm;
+    margin: 0 auto 20px auto;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    border: 1px solid #ccc;
+  }
+}
+
+/* Watermark */
+.pr-print-watermark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.pr-print-watermark::before {
+  content: 'เพื่อการทดสอบ';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 48px;
+  color: rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  font-weight: bold;
+  letter-spacing: 8px;
+}
+
+.pr-print-watermark::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -50%;
+  width: 200%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(128, 128, 128, 0.2), transparent);
+  transform: rotate(-45deg);
+  transform-origin: center;
+}
+
+/* Legacy class for backwards compatibility */
+.pr-print-layout {
+  font-family: 'Sarabun', 'TH SarabunPSK', 'Noto Sans Thai', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #000;
+  background: white;
+  position: relative;
+  padding: 8mm 10mm;
+}

@@ -447,6 +447,7 @@ export default function AdminUsersPage() {
                               user.role === "Approval" ? "bg-pink-100 text-pink-800" :
                               user.role === "Manager" ? "bg-blue-100 text-blue-800" :
                               user.role === "POPR" ? "bg-green-100 text-green-800" :
+                              user.role === "Warehouse" ? "bg-amber-100 text-amber-800" :
                               "bg-gray-100 text-gray-800"
                             }`}>
                               {user.role || "PR"}
@@ -563,6 +564,7 @@ export default function AdminUsersPage() {
                               user.role === "Approval" ? "bg-pink-100 text-pink-800" :
                               user.role === "Manager" ? "bg-blue-100 text-blue-800" :
                               user.role === "POPR" ? "bg-green-100 text-green-800" :
+                              user.role === "Warehouse" ? "bg-amber-100 text-amber-800" :
                               "bg-gray-100 text-gray-800"
                             }`}>
                               {user.role}
@@ -718,6 +720,7 @@ export default function AdminUsersPage() {
                   <option value="Approval">Approval</option>
                   <option value="Manager">Manager</option>
                   <option value="POPR">POPR</option>
+                  <option value="Warehouse">Warehouse</option>
                   <option value="PR">PR</option>
                 </select>
               </div>

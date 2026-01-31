@@ -1,11 +1,12 @@
 /**
- * Attachment Sync Scheduler
- * - Sync PR & PO attachments ทุก 2 ชั่วโมง (ใช้ node-cron)
+ * Attachment & Project Sync Scheduler
+ * - Sync PR & PO attachments + PR Projects ทุก 2 ชั่วโมง (ใช้ node-cron)
  * - Full refresh (ลบ + ดึงใหม่) ทุกเที่ยงคืน (00:00)
  */
 
 import { syncPRAttachments } from '~/server/api/services/prAttachmentSync';
 import { syncPOAttachments } from '~/server/api/services/poAttachmentSync';
+import { syncPRProjects } from '~/server/api/services/prProjectSync';
 import { db } from '~/server/db';
 import cron from 'node-cron';
 
@@ -30,10 +31,11 @@ async function fullRefreshAttachments() {
   console.log('[ATTACHMENT-SYNC] 🌙 Starting midnight full refresh...');
 
   try {
-    // ลบ attachments ทั้งหมด
-    console.log('[ATTACHMENT-SYNC] Clearing all attachments...');
+    // ลบ attachments และ project links ทั้งหมด
+    console.log('[ATTACHMENT-SYNC] Clearing all attachments and project links...');
     await db.$executeRaw`TRUNCATE TABLE pr_attachments CASCADE`;
     await db.$executeRaw`TRUNCATE TABLE po_attachments CASCADE`;
+    await db.$executeRaw`TRUNCATE TABLE pr_project_link CASCADE`;
     console.log('[ATTACHMENT-SYNC] ✅ Tables cleared');
 
     // ดึงใหม่ทั้งหมด
@@ -47,7 +49,7 @@ async function fullRefreshAttachments() {
 }
 
 /**
- * Sync attachments (normal mode)
+ * Sync attachments and project links (normal mode)
  */
 async function syncAttachments() {
   if (isAttachmentSyncInProgress) {
@@ -64,12 +66,17 @@ async function syncAttachments() {
     // Sync PR Attachments
     console.log('[ATTACHMENT-SYNC] Syncing PR attachments...');
     const prResult = await syncPRAttachments();
-    console.log(`[ATTACHMENT-SYNC] ✅ PR: ${prResult.insertCount} inserted, ${prResult.skipCount} skipped`);
+    console.log(`[ATTACHMENT-SYNC] ✅ PR Attachments: ${prResult.insertCount} inserted, ${prResult.skipCount} skipped`);
 
     // Sync PO Attachments
     console.log('[ATTACHMENT-SYNC] Syncing PO attachments...');
     const poResult = await syncPOAttachments();
-    console.log(`[ATTACHMENT-SYNC] ✅ PO: ${poResult.insertCount} inserted, ${poResult.skipCount} skipped`);
+    console.log(`[ATTACHMENT-SYNC] ✅ PO Attachments: ${poResult.insertCount} inserted, ${poResult.skipCount} skipped`);
+
+    // Sync PR Projects
+    console.log('[ATTACHMENT-SYNC] Syncing PR project links...');
+    const projectResult = await syncPRProjects();
+    console.log(`[ATTACHMENT-SYNC] ✅ PR Projects: ${projectResult.insertCount} inserted, ${projectResult.updateCount} updated, ${projectResult.skipCount} skipped`);
 
     lastSyncEndTime = new Date();
     const duration = (lastSyncEndTime.getTime() - syncStartTime.getTime()) / 1000;
@@ -80,6 +87,7 @@ async function syncAttachments() {
       success: true,
       prResult,
       poResult,
+      projectResult,
       duration,
     };
   } catch (error) {

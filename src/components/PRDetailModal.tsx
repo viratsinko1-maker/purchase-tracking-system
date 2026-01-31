@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import { api } from "~/utils/api";
 import { useAuth } from "~/hooks/useAuth";
 import PODetailModal from "./PODetailModal";
+import WODetailModal from "./WODetailModal";
 
 interface PRDetailModalProps {
   prNo: number;
@@ -18,10 +19,14 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
   // State สำหรับเปิด PO Detail Modal
   const [selectedPoNo, setSelectedPoNo] = useState<number | null>(null);
 
+  // State สำหรับเปิด WO Detail Modal
+  const [selectedWoNo, setSelectedWoNo] = useState<number | null>(null);
+
   // รีเซ็ต state เมื่อปิด modal
   useEffect(() => {
     if (!isOpen) {
       setSelectedPoNo(null);
+      setSelectedWoNo(null);
       setExpandedTrackingId(null);
       setShowApprovers(false);
     }
@@ -304,14 +309,28 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
               <h2 className="text-2xl font-bold">
                 PR #{prNo}
               </h2>
-              <button
-                onClick={onClose}
-                className="rounded-full p-2 hover:bg-white/20 transition"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Print Button - Opens new page */}
+                <button
+                  onClick={() => window.open(`/print/pr/${prNo}`, '_blank')}
+                  className="rounded-full p-2 hover:bg-white/20 transition"
+                  title="พิมพ์"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                </button>
+                {/* Close Button */}
+                <button
+                  onClick={onClose}
+                  className="rounded-full p-2 hover:bg-white/20 transition"
+                  title="ปิด"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -348,6 +367,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                       </div>
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      {/* แถว 1: ผู้เปิด pr | หน่วยงาน | System Date */}
                       <div>
                         <p className="text-sm text-gray-600">ผู้เปิด PR</p>
                         <p className="font-medium text-gray-900">{formatName(prData.req_name)}</p>
@@ -360,6 +380,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         <p className="text-sm text-gray-600">System Date (วันที่คีย์ข้อมูล)</p>
                         <p className="font-medium text-gray-900">{formatDate(prData.create_date)}</p>
                       </div>
+                      {/* แถว 2: วันที่เปิด PR | วันที่ครบกำหนด | วันที่อัพเดตล่าสุด */}
                       <div>
                         <p className="text-sm text-gray-600">วันที่เปิด PR</p>
                         <p className="font-medium text-gray-900">{formatDate(prData.date)}</p>
@@ -372,13 +393,42 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         <p className="text-sm text-gray-600">วันที่อัพเดตล่าสุด</p>
                         <p className="font-medium text-gray-900">{formatDate(prData.update_date)}</p>
                       </div>
+                      {/* แถว 3: ชื่องาน | เลขที่ WO | หมายเหตุ */}
                       <div>
                         <p className="text-sm text-gray-600">ชื่องาน</p>
                         <p className="font-medium text-gray-900">{prData.job_name || "-"}</p>
                       </div>
-                      <div className="md:col-span-3">
+                      <div>
+                        <p className="text-sm text-gray-600">เลขที่ WO</p>
+                        <p className="font-medium text-gray-900">
+                          {prData.wo_numbers && prData.wo_numbers.length > 0 ? (
+                            <span className="flex flex-wrap gap-1">
+                              {prData.wo_numbers.map((wo: number) => (
+                                <button
+                                  key={wo}
+                                  onClick={() => setSelectedWoNo(wo)}
+                                  className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-teal-100 text-teal-800 hover:bg-teal-200 hover:text-teal-900 cursor-pointer transition"
+                                  title="คลิกเพื่อดูรายละเอียด WO"
+                                >
+                                  WO-{wo}
+                                </button>
+                              ))}
+                            </span>
+                          ) : '-'}
+                        </p>
+                      </div>
+                      <div>
                         <p className="text-sm text-gray-600">หมายเหตุ</p>
                         <p className="font-medium text-gray-900">{prData.remarks || "-"}</p>
+                      </div>
+                      {/* แถว 4: เลขที่โครงการ | โครงการ */}
+                      <div>
+                        <p className="text-sm text-gray-600">เลขที่โครงการ</p>
+                        <p className="font-medium text-gray-900">{prData.project_code || "-"}</p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <p className="text-sm text-gray-600">โครงการ</p>
+                        <p className="font-medium text-gray-900">{prData.project_name || "-"}</p>
                       </div>
                     </div>
                   </div>
@@ -1080,6 +1130,15 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
         />
       )}
 
+      {/* WO Detail Modal (ซ้อนทับ) - z-index สูงกว่า */}
+      {selectedWoNo && (
+        <WODetailModal
+          woNo={selectedWoNo}
+          isOpen={!!selectedWoNo}
+          onClose={() => setSelectedWoNo(null)}
+        />
+      )}
+
       {/* Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -1106,6 +1165,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
           </div>
         </div>
       )}
+
     </Fragment>
   );
 }
