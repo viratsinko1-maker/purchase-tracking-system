@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
@@ -132,6 +132,17 @@ export default function ReceiveGoodReport() {
     // Convert to array and sort by PR number descending
     return Array.from(groups.values()).sort((a, b) => b.pr_doc_num - a.pr_doc_num);
   }, [records]);
+
+  // Auto-open PR popup when prNo query param is present
+  useEffect(() => {
+    if (router.isReady && router.query.prNo && prGroups.length > 0 && !selectedPR) {
+      const prNo = parseInt(router.query.prNo as string, 10);
+      const targetPR = prGroups.find(pr => pr.pr_doc_num === prNo);
+      if (targetPR) {
+        setSelectedPR(targetPR);
+      }
+    }
+  }, [router.isReady, router.query.prNo, prGroups, selectedPR]);
 
   // Format Thai date time
   const formatThaiDateTime = (date: Date) => {

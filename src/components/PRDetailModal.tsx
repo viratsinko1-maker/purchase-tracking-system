@@ -438,7 +438,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-lg font-semibold text-gray-900">รายการสินค้า</h3>
                       <button
-                        onClick={() => window.open(`/receive-good?search=${prNo}`, '_blank')}
+                        onClick={() => window.open(`/receive-good/report?prNo=${prNo}`, '_blank')}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition"
                         title="ดูสถานะการรับของ"
                       >
