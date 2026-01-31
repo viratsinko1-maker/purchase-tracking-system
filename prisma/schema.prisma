@@ -7,19 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Post {
-  id          Int      @id @default(autoincrement())
-  name        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-
-  @@index([name])
-}
-
 model Account {
-  id                       String  @id @default(cuid())
+  id                       String  @id
   userId                   String
   type                     String
   provider                 String
@@ -32,114 +21,20 @@ model Account {
   id_token                 String?
   session_state            String?
   refresh_token_expires_in Int?
-  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  userId        String?   @unique
-  username      String?   @unique
-  password      String?
-  role          String?   @default("PR") @db.VarChar(20)
-  isActive      Boolean?  @default(true)
-  accounts      Account[]
-  posts         Post[]
-  sessions      Session[]
-}
-
-/// User Production - ดึงจาก TMK_PDPJ01.User
-model User_production {
-  id             String    @id @default(cuid())
-  email          String    @unique  // email จาก TMK_PDPJ01 (ใช้เป็น key)
-  userId         String?   @unique  // = email (สำหรับ login)
-  username       String?             // = name จาก TMK_PDPJ01 (สำหรับแสดงผล)
-  name           String?             // ชื่อเต็มจาก TMK_PDPJ01
-  password       String?             // default "1234" (hashed)
-  role           String    @default("PR") @db.VarChar(20)
-  isActive       Boolean   @default(true)
-  sourceId       String?             // original id จาก TMK_PDPJ01
-  telegramChatId String?             // Telegram Chat ID สำหรับแจ้งเตือนโดยตรง
-  lastSyncAt     DateTime? @db.Timestamp(6)
-  createdAt      DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt      DateTime  @updatedAt @db.Timestamp(6)
-
-  @@index([email])
-  @@index([isActive])
-  @@map("user_production")
-}
-
-/// OCR Code and Name - ดึงจาก TMK_PRD.OUDP (Department/Cost Center)
-model OCR_codeandName {
-  id                   Int       @id @default(autoincrement())
-  code                 Int       @unique  // Code จาก OUDP (primary key ใน SAP)
-  name                 String    @unique  // Name จาก OUDP (ocr_code2 ใน pr_lines)
-  remarks              String?             // ชื่อหน่วยงาน/แผนก
-  father               Int?                // รหัส parent (สำหรับ hierarchy)
-  lineApproverId       String?             // ผู้อนุมัติตามสายงาน (FK -> User_production.id)
-  costCenterApproverId String?             // ผู้อนุมัติตาม Cost Center (FK -> User_production.id)
-  lastSyncAt           DateTime? @db.Timestamp(6)
-  createdAt            DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt            DateTime  @updatedAt @db.Timestamp(6)
+model Post {
+  id          Int      @id @default(autoincrement())
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  createdById String
+  User        User     @relation(fields: [createdById], references: [id])
 
   @@index([name])
-  @@index([code])
-  @@map("ocr_code_and_name")
-}
-
-/// OCR User Assignment - เก็บความสัมพันธ์ระหว่าง OCR Code และ User Production
-/// สำหรับใช้ในระบบ Approval Workflow ของแต่ละหน่วยงาน
-model ocr_user_assignment {
-  id              Int       @id @default(autoincrement())
-  ocrCodeId       Int                           // FK ไปยัง OCR_codeandName.id
-  userProductionId String                        // FK ไปยัง User_production.id
-  role            String    @default("member") @db.VarChar(20)  // member, approver, head
-  createdAt       DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt       DateTime  @updatedAt @db.Timestamp(6)
-  createdBy       String?   @db.VarChar(255)    // ผู้เพิ่ม
-
-  @@unique([ocrCodeId, userProductionId])
-  @@index([ocrCodeId])
-  @@index([userProductionId])
-}
-
-/// OCR Approver - เก็บผู้อนุมัติหลายคนสำหรับแต่ละ OCR Code
-/// approverType: "line" = ผู้อนุมัติตามสายงาน, "cost_center" = ผู้อนุมัติตาม Cost Center
-model ocr_approver {
-  id              Int       @id @default(autoincrement())
-  ocrCodeId       Int                           // FK ไปยัง OCR_codeandName.id
-  userProductionId String                        // FK ไปยัง User_production.id
-  approverType    String    @db.VarChar(20)     // "line" หรือ "cost_center"
-  priority        Int       @default(1)          // ลำดับความสำคัญ (1 = หลัก, 2+ = สำรอง)
-  createdAt       DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt       DateTime  @updatedAt @db.Timestamp(6)
-  createdBy       String?   @db.VarChar(255)
-
-  @@unique([ocrCodeId, userProductionId, approverType])
-  @@index([ocrCodeId])
-  @@index([userProductionId])
-  @@index([approverType])
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
 }
 
 model PurchaseRequestPO {
@@ -160,12 +55,347 @@ model PurchaseRequestPO {
   poUnit        String?
   poLineNum     Int?
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime
 
-  @@index([prDocEntry])
-  @@index([prNo])
   @@index([poNo])
   @@index([prDate])
+  @@index([prDocEntry])
+  @@index([prNo])
+}
+
+model Session {
+  id           String   @id
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  userId        String?   @unique
+  username      String?   @unique
+  password      String?
+  role          String?   @default("PR") @db.VarChar(20)
+  isActive      Boolean?  @default(true)
+  Account       Account[]
+  Post          Post[]
+  Session       Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model activity_trail {
+  id            Int       @id @default(autoincrement())
+  user_id       String?   @db.VarChar(255)
+  user_name     String?   @db.VarChar(255)
+  ip_address    String?   @db.VarChar(50)
+  action        String    @db.VarChar(50)
+  description   String?
+  pr_no         Int?
+  po_no         Int?
+  tracking_id   Int?
+  metadata      Json?
+  created_at    DateTime? @default(dbgenerated("((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text) AT TIME ZONE 'Asia/Bangkok'::text)")) @db.Timestamp(6)
+  computer_name String?   @db.VarChar(255)
+
+  @@index([action], map: "idx_activity_trail_action")
+  @@index([computer_name], map: "idx_activity_trail_computer_name")
+  @@index([created_at(sort: Desc)], map: "idx_activity_trail_created_at")
+  @@index([po_no], map: "idx_activity_trail_po_no")
+  @@index([pr_no], map: "idx_activity_trail_pr_no")
+  @@index([user_id], map: "idx_activity_trail_user_id")
+}
+
+model ocr_approver {
+  id               Int      @id @default(autoincrement())
+  ocrCodeId        Int
+  userProductionId String
+  approverType     String   @db.VarChar(20)
+  priority         Int      @default(1)
+  createdAt        DateTime @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime @db.Timestamp(6)
+  createdBy        String?  @db.VarChar(255)
+
+  @@unique([ocrCodeId, userProductionId, approverType])
+  @@index([approverType])
+  @@index([ocrCodeId])
+  @@index([userProductionId])
+}
+
+model ocr_code_and_name {
+  id                   Int       @id @default(autoincrement())
+  code                 Int       @unique
+  name                 String    @unique
+  remarks              String?
+  father               Int?
+  lineApproverId       String?
+  costCenterApproverId String?
+  lastSyncAt           DateTime? @db.Timestamp(6)
+  createdAt            DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt            DateTime  @db.Timestamp(6)
+
+  @@index([code])
+  @@index([name])
+}
+
+model ocr_user_assignment {
+  id               Int      @id @default(autoincrement())
+  ocrCodeId        Int
+  userProductionId String
+  role             String   @default("member") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime @db.Timestamp(6)
+  createdBy        String?  @db.VarChar(255)
+
+  @@unique([ocrCodeId, userProductionId])
+  @@index([ocrCodeId])
+  @@index([userProductionId])
+}
+
+model po_attachments {
+  id               Int       @id @default(autoincrement())
+  po_doc_num       Int
+  attachment_entry Int
+  file_name        String    @db.VarChar(255)
+  src_path         String?
+  trgt_path        String?
+  file_ext         String?   @db.VarChar(50)
+  created_at       DateTime  @default(now()) @db.Timestamp(6)
+  uploaded_date    DateTime? @db.Date
+
+  @@unique([po_doc_num, attachment_entry, file_name])
+  @@index([po_doc_num], map: "idx_po_attachments_po_doc_num")
+  @@index([po_doc_num])
+}
+
+model po_delivery_tracking_log {
+  id              Int       @id @default(autoincrement())
+  po_doc_num      Int
+  delivery_status String    @db.VarChar(20)
+  note            String?
+  tracked_by      String?   @db.VarChar(255)
+  tracked_at      DateTime  @default(now()) @db.Timestamp(6)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([po_doc_num])
+  @@index([tracked_at])
+}
+
+model po_info {
+  id          Int       @id @default(autoincrement())
+  po_doc_num  Int       @unique
+  po_doc_date DateTime  @db.Date
+  po_due_date DateTime? @db.Date
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([po_doc_num])
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model po_lines {
+  id             Int       @id @default(autoincrement())
+  po_doc_num     Int
+  line_num       Int
+  item_code      String?   @db.VarChar(100)
+  description    String?
+  quantity       Decimal?  @db.Decimal(19, 6)
+  line_status    String?   @db.VarChar(1)
+  base_ref       Int?
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  po_master      po_master @relation(fields: [po_doc_num], references: [doc_num], onDelete: Cascade)
+
+  @@unique([po_doc_num, line_num, description])
+  @@index([base_ref])
+  @@index([po_doc_num])
+}
+
+model po_master {
+  id             Int        @id @default(autoincrement())
+  doc_num        Int        @unique
+  doc_date       DateTime   @db.Date
+  doc_due_date   DateTime?  @db.Date
+  doc_status     String?    @db.VarChar(1)
+  update_date    DateTime?  @db.Timestamp(6)
+  create_date    DateTime?  @db.Timestamp(6)
+  req_date       DateTime?  @db.Date
+  cancel_date    DateTime?  @db.Date
+  last_sync_date DateTime?  @default(now()) @db.Timestamp(6)
+  created_at     DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?  @default(now()) @db.Timestamp(6)
+  canceled       String?    @db.VarChar(1)
+  po_lines       po_lines[]
+
+  @@index([doc_date])
+  @@index([doc_num])
+  @@index([doc_status])
+}
+
+model po_pr_wo {
+  id         Int       @id @default(autoincrement())
+  po_no      Int
+  po_date    DateTime  @db.Date
+  pr_no      Int?
+  wo_no      Int?
+  canceled   String    @db.Char(1)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([po_date], map: "idx_po_pr_wo_po_date")
+  @@index([po_no], map: "idx_po_pr_wo_po_no")
+  @@index([pr_no], map: "idx_po_pr_wo_pr_no")
+  @@index([wo_no], map: "idx_po_pr_wo_wo_no")
+}
+
+model po_pr_wo_link {
+  id          Int       @id @default(autoincrement())
+  po_doc_num  Int
+  po_doc_date DateTime? @db.Date
+  po_canceled String?   @db.VarChar(1)
+  line_num    Int?
+  item_code   String?   @db.VarChar(100)
+  dscription  String?
+  ocr_code4   String?   @db.VarChar(50)
+  ocr_name    String?   @db.VarChar(255)
+  ocr_code2   String?   @db.VarChar(50)
+  line_total  Decimal?  @db.Decimal(19, 6)
+  doc_total   Decimal?  @db.Decimal(19, 6)
+  pr_mac      String?   @db.VarChar(255)
+  pr_for      String?   @db.VarChar(255)
+  pr_no       String?   @db.VarChar(50)
+  wo_no       String?   @db.VarChar(50)
+  project     String?   @db.VarChar(100)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([ocr_code4], map: "idx_po_pr_wo_link_ocr_code4")
+  @@index([po_doc_num], map: "idx_po_pr_wo_link_po_doc_num")
+  @@index([pr_no], map: "idx_po_pr_wo_link_pr_no")
+  @@index([wo_no], map: "idx_po_pr_wo_link_wo_no")
+}
+
+model po_sync_log {
+  id               Int       @id @default(autoincrement())
+  sync_date        DateTime  @default(now()) @db.Timestamp(6)
+  sync_type        String    @db.VarChar(20)
+  records_synced   Int?      @default(0)
+  duration_seconds Decimal?  @db.Decimal(10, 2)
+  status           String    @db.VarChar(20)
+  error_message    String?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([sync_date])
+}
+
+model pr_attachments {
+  id               Int       @id @default(autoincrement())
+  pr_doc_num       Int
+  attachment_entry Int
+  file_name        String    @db.VarChar(255)
+  src_path         String?
+  trgt_path        String?
+  file_ext         String?   @db.VarChar(50)
+  created_at       DateTime  @default(now()) @db.Timestamp(6)
+  uploaded_date    DateTime? @db.Date
+
+  @@unique([pr_doc_num, attachment_entry, file_name])
+  @@index([pr_doc_num])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model pr_document_approval {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int       @unique
+  approval_status     String    @db.VarChar(20)
+  reason              String?
+  approved_by         String?   @db.VarChar(255)
+  approved_by_user_id String?   @db.VarChar(255)
+  approved_at         DateTime  @default(now()) @db.Timestamp(6)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+  updated_at          DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([pr_doc_num], map: "idx_pr_document_approval_pr_doc_num")
+  @@index([approval_status], map: "idx_pr_document_approval_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model pr_document_approval_history {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int
+  approval_status     String    @db.VarChar(20)
+  reason              String?
+  approved_by         String?   @db.VarChar(255)
+  approved_by_user_id String?   @db.VarChar(255)
+  approved_at         DateTime  @db.Timestamp(6)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_pr_document_approval_history_created_at")
+  @@index([pr_doc_num], map: "idx_pr_document_approval_history_pr_doc_num")
+}
+
+model pr_document_receipt {
+  id                              Int       @id @default(autoincrement())
+  pr_doc_num                      Int       @unique
+  receipt_date                    DateTime  @db.Date
+  received_by                     String    @db.VarChar(255)
+  received_by_user_id             String?   @db.VarChar(255)
+  created_at                      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                      DateTime? @default(now()) @db.Timestamp(6)
+  cost_center_approval_at         DateTime? @db.Timestamp(6)
+  cost_center_approval_by         String?   @db.VarChar(255)
+  cost_center_approval_by_user_id String?   @db.VarChar(255)
+  cost_center_approvers           Json?
+  line_approval_at                DateTime? @db.Timestamp(6)
+  line_approval_by                String?   @db.VarChar(255)
+  line_approval_by_user_id        String?   @db.VarChar(255)
+  line_approvers                  Json?
+  ocr_code2                       String?   @db.VarChar(50)
+  procurement_approval_at         DateTime? @db.Timestamp(6)
+  procurement_approval_by         String?   @db.VarChar(255)
+  procurement_approval_by_user_id String?   @db.VarChar(255)
+  receipt_datetime                DateTime? @db.Timestamp(6)
+  requester_approval_at           DateTime? @db.Timestamp(6)
+  requester_approval_by           String?   @db.VarChar(255)
+  requester_approval_by_user_id   String?   @db.VarChar(255)
+  vpc_approval_at                 DateTime? @db.Timestamp(6)
+  vpc_approval_by                 String?   @db.VarChar(255)
+  vpc_approval_by_user_id         String?   @db.VarChar(255)
+
+  @@index([pr_doc_num], map: "idx_pr_document_receipt_pr_doc_num")
+  @@index([receipt_date], map: "idx_pr_document_receipt_receipt_date")
+  @@index([received_by_user_id], map: "idx_pr_document_receipt_user_id")
+}
+
+model pr_document_receipt_history {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int
+  action              String    @db.VarChar(10)
+  edit_count          Int?      @default(0)
+  old_receipt_date    DateTime? @db.Date
+  new_receipt_date    DateTime  @db.Date
+  received_by         String    @db.VarChar(255)
+  received_by_user_id String?   @db.VarChar(255)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([action], map: "idx_pr_document_receipt_history_action")
+  @@index([created_at(sort: Desc)], map: "idx_pr_document_receipt_history_created_at")
+  @@index([pr_doc_num], map: "idx_pr_document_receipt_history_pr_doc_num")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -177,7 +407,6 @@ model pr_lines {
   item_code      String?   @db.VarChar(100)
   description    String?
   quantity       Decimal?  @db.Decimal(19, 6)
-  unit_msr       String?   @db.VarChar(100)
   line_status    String?   @db.VarChar(1)
   line_date      DateTime? @db.Date
   ocr_code       String?   @db.VarChar(50)
@@ -190,10 +419,11 @@ model pr_lines {
   last_sync_date DateTime? @default(now()) @db.Timestamp(6)
   created_at     DateTime? @default(now()) @db.Timestamp(6)
   updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  unit_msr       String?   @db.VarChar(100)
   pr_master      pr_master @relation(fields: [pr_doc_num], references: [doc_num], onDelete: Cascade, onUpdate: NoAction, map: "fk_pr_master")
 
-  @@unique([pr_doc_num, line_num, description], map: "uq_pr_line")
   @@unique([pr_doc_num, line_num], map: "pr_lines_unique")
+  @@unique([pr_doc_num, line_num, description], map: "uq_pr_line")
   @@index([has_po], map: "idx_pr_lines_has_po")
   @@index([item_code], map: "idx_pr_lines_item_code")
   @@index([line_status], map: "idx_pr_lines_line_status")
@@ -253,6 +483,34 @@ model pr_po_link {
   @@index([pr_doc_num], map: "idx_pr_po_link_pr_doc_num")
 }
 
+model pr_project_link {
+  id             Int       @id @default(autoincrement())
+  pr_doc_num     Int
+  line_num       Int
+  prj_code       String?   @db.VarChar(100)
+  prj_name       String?   @db.VarChar(255)
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([pr_doc_num, line_num])
+  @@index([pr_doc_num], map: "idx_pr_project_link_pr_doc_num")
+  @@index([prj_code], map: "idx_pr_project_link_prj_code")
+}
+
+model pr_wo_link {
+  id             Int       @id @default(autoincrement())
+  pr_doc_num     Int
+  wo_doc_num     Int
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([pr_doc_num, wo_doc_num])
+  @@index([pr_doc_num], map: "idx_pr_wo_link_pr_doc_num")
+  @@index([wo_doc_num], map: "idx_pr_wo_link_wo_doc_num")
+}
+
 model sync_change_log {
   id             Int       @id @default(autoincrement())
   sync_log_id    Int
@@ -273,29 +531,6 @@ model sync_change_log {
   @@index([sync_log_id], map: "idx_sync_change_log_sync_log_id")
 }
 
-/// Activity Trail - บันทึกการกระทำของผู้ใช้ทั้งหมด
-model activity_trail {
-  id            Int       @id @default(autoincrement())
-  user_id       String?   @db.VarChar(255)
-  user_name     String?   @db.VarChar(255)
-  ip_address    String?   @db.VarChar(50)
-  action        String    @db.VarChar(50)
-  description   String?
-  pr_no         Int?
-  po_no         Int?
-  tracking_id   Int?
-  metadata      Json?
-  created_at    DateTime? @default(dbgenerated("((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text) AT TIME ZONE 'Asia/Bangkok'::text)")) @db.Timestamp(6)
-  computer_name String?   @db.VarChar(255)
-
-  @@index([user_id], map: "idx_activity_trail_user_id")
-  @@index([action], map: "idx_activity_trail_action")
-  @@index([pr_no], map: "idx_activity_trail_pr_no")
-  @@index([po_no], map: "idx_activity_trail_po_no")
-  @@index([computer_name], map: "idx_activity_trail_computer_name")
-  @@index([created_at(sort: Desc)], map: "idx_activity_trail_created_at")
-}
-
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model sync_log {
   id                Int               @id @default(autoincrement())
@@ -312,15 +547,38 @@ model sync_log {
   sync_change_log   sync_change_log[]
 }
 
-model po_info {
-  id          Int       @id @default(autoincrement())
-  po_doc_num  Int       @unique
-  po_doc_date DateTime  @db.Date
-  po_due_date DateTime? @db.Date
-  created_at  DateTime? @default(now()) @db.Timestamp(6)
-  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+model tracking_response_log {
+  id                Int               @id @default(autoincrement())
+  tracking_id       Int
+  pr_doc_num        Int
+  response_note     String?
+  responded_by      String?           @db.VarChar(255)
+  responded_at      DateTime          @default(now()) @db.Timestamp(6)
+  created_at        DateTime?         @default(now()) @db.Timestamp(6)
+  user_tracking_log user_tracking_log @relation(fields: [tracking_id], references: [id], onDelete: Cascade)
 
-  @@index([po_doc_num])
+  @@index([pr_doc_num])
+  @@index([responded_at])
+  @@index([tracking_id])
+}
+
+model user_production {
+  id             String    @id
+  email          String    @unique
+  userId         String?   @unique
+  username       String?
+  name           String?
+  password       String?
+  role           String    @default("PR") @db.VarChar(20)
+  isActive       Boolean   @default(true)
+  sourceId       String?
+  telegramChatId String?
+  lastSyncAt     DateTime? @db.Timestamp(6)
+  createdAt      DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime  @db.Timestamp(6)
+
+  @@index([email])
+  @@index([isActive])
 }
 
 model user_tracking_log {
@@ -334,164 +592,8 @@ model user_tracking_log {
   tracking_response_log tracking_response_log[]
 
   @@index([pr_doc_num])
+  @@index([tracked_at])
   @@index([urgency_level])
-  @@index([tracked_at])
-}
-
-model tracking_response_log {
-  id            Int               @id @default(autoincrement())
-  tracking_id   Int
-  pr_doc_num    Int
-  response_note String?
-  responded_by  String?           @db.VarChar(255)
-  responded_at  DateTime          @default(now()) @db.Timestamp(6)
-  created_at    DateTime?         @default(now()) @db.Timestamp(6)
-  user_tracking user_tracking_log @relation(fields: [tracking_id], references: [id], onDelete: Cascade)
-
-  @@index([tracking_id])
-  @@index([pr_doc_num])
-  @@index([responded_at])
-}
-
-model pr_attachments {
-  id               Int       @id @default(autoincrement())
-  pr_doc_num       Int
-  attachment_entry Int
-  file_name        String    @db.VarChar(255)
-  src_path         String?
-  trgt_path        String?
-  file_ext         String?   @db.VarChar(50)
-  created_at       DateTime  @default(now()) @db.Timestamp(6)
-  uploaded_date    DateTime? @db.Date
-
-  @@unique([pr_doc_num, attachment_entry, file_name])
-  @@index([pr_doc_num])
-}
-
-model po_attachments {
-  id               Int       @id @default(autoincrement())
-  po_doc_num       Int
-  attachment_entry Int
-  file_name        String    @db.VarChar(255)
-  src_path         String?
-  trgt_path        String?
-  file_ext         String?   @db.VarChar(50)
-  created_at       DateTime  @default(now()) @db.Timestamp(6)
-  uploaded_date    DateTime? @db.Date
-
-  @@unique([po_doc_num, attachment_entry, file_name])
-  @@index([po_doc_num])
-  @@index([po_doc_num], map: "idx_po_attachments_po_doc_num")
-}
-
-model po_master {
-  id             Int        @id @default(autoincrement())
-  doc_num        Int        @unique
-  doc_date       DateTime   @db.Date
-  doc_due_date   DateTime?  @db.Date
-  doc_status     String?    @db.VarChar(1)
-  update_date    DateTime?  @db.Timestamp(6)
-  create_date    DateTime?  @db.Timestamp(6)
-  req_date       DateTime?  @db.Date
-  cancel_date    DateTime?  @db.Date
-  last_sync_date DateTime?  @default(now()) @db.Timestamp(6)
-  created_at     DateTime?  @default(now()) @db.Timestamp(6)
-  updated_at     DateTime?  @default(now()) @db.Timestamp(6)
-  canceled       String?    @db.VarChar(1)
-  po_lines       po_lines[]
-
-  @@index([doc_num])
-  @@index([doc_status])
-  @@index([doc_date])
-}
-
-/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
-model po_lines {
-  id             Int       @id @default(autoincrement())
-  po_doc_num     Int
-  line_num       Int
-  item_code      String?   @db.VarChar(100)
-  description    String?
-  quantity       Decimal?  @db.Decimal(19, 6)
-  line_status    String?   @db.VarChar(1)
-  base_ref       Int?
-  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
-  created_at     DateTime? @default(now()) @db.Timestamp(6)
-  updated_at     DateTime? @default(now()) @db.Timestamp(6)
-  po_master      po_master @relation(fields: [po_doc_num], references: [doc_num], onDelete: Cascade)
-
-  @@unique([po_doc_num, line_num, description])
-  @@index([po_doc_num])
-  @@index([base_ref])
-}
-
-model po_delivery_tracking_log {
-  id              Int       @id @default(autoincrement())
-  po_doc_num      Int
-  delivery_status String    @db.VarChar(20)
-  note            String?
-  tracked_by      String?   @db.VarChar(255)
-  tracked_at      DateTime  @default(now()) @db.Timestamp(6)
-  created_at      DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([po_doc_num])
-  @@index([tracked_at])
-}
-
-model po_sync_log {
-  id               Int       @id @default(autoincrement())
-  sync_date        DateTime  @default(now()) @db.Timestamp(6)
-  sync_type        String    @db.VarChar(20)
-  records_synced   Int?      @default(0)
-  duration_seconds Decimal?  @db.Decimal(10, 2)
-  status           String    @db.VarChar(20)
-  error_message    String?
-  created_at       DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([sync_date])
-}
-
-model po_pr_wo {
-  id         Int       @id @default(autoincrement())
-  po_no      Int
-  po_date    DateTime  @db.Date
-  pr_no      Int?
-  wo_no      Int?
-  canceled   String    @db.Char(1)
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-  updated_at DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([po_date], map: "idx_po_pr_wo_po_date")
-  @@index([po_no], map: "idx_po_pr_wo_po_no")
-  @@index([pr_no], map: "idx_po_pr_wo_pr_no")
-  @@index([wo_no], map: "idx_po_pr_wo_wo_no")
-}
-
-model po_pr_wo_link {
-  id          Int       @id @default(autoincrement())
-  po_doc_num  Int
-  po_doc_date DateTime? @db.Date
-  po_canceled String?   @db.VarChar(1)
-  line_num    Int?
-  item_code   String?   @db.VarChar(100)
-  dscription  String?
-  ocr_code4   String?   @db.VarChar(50)
-  ocr_name    String?   @db.VarChar(255)
-  ocr_code2   String?   @db.VarChar(50)
-  line_total  Decimal?  @db.Decimal(19, 6)
-  doc_total   Decimal?  @db.Decimal(19, 6)
-  pr_mac      String?   @db.VarChar(255)
-  pr_for      String?   @db.VarChar(255)
-  pr_no       String?   @db.VarChar(50)
-  wo_no       String?   @db.VarChar(50)
-  project     String?   @db.VarChar(100)
-  created_at  DateTime? @default(now()) @db.Timestamp(6)
-  updated_at  DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([ocr_code4], map: "idx_po_pr_wo_link_ocr_code4")
-  @@index([po_doc_num], map: "idx_po_pr_wo_link_po_doc_num")
-  @@index([pr_no], map: "idx_po_pr_wo_link_pr_no")
-  @@index([wo_no], map: "idx_po_pr_wo_link_wo_no")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -528,6 +630,55 @@ model wa_detail {
   @@index([series_name], map: "idx_wa_detail_series_name")
 }
 
+model warehouse_receive_attachment {
+  id                  Int      @id @default(autoincrement())
+  pr_doc_num          Int
+  batch_key           String   @db.VarChar(100)
+  category            String   @default("document") @db.VarChar(50) // "document" or "photo"
+  file_name           String   @db.VarChar(255)
+  file_path           String   @db.VarChar(500)
+  file_size           Int
+  file_type           String   @db.VarChar(100)
+  uploaded_by         String   @db.VarChar(255)
+  uploaded_by_user_id String?  @db.VarChar(255)
+  uploaded_at         DateTime @default(now()) @db.Timestamp(6)
+  created_at          DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([batch_key], map: "idx_warehouse_receive_attachment_batch_key")
+  @@index([pr_doc_num], map: "idx_warehouse_receive_attachment_pr_doc_num")
+  @@index([category], map: "idx_warehouse_receive_attachment_category")
+}
+
+model warehouse_receivegood {
+  id                  Int       @id @default(autoincrement())
+  pr_doc_num          Int
+  pr_line_id          Int
+  line_num            Int
+  item_code           String?   @db.VarChar(100)
+  description         String?
+  original_qty        Decimal   @db.Decimal(19, 6)
+  received_qty        Decimal   @db.Decimal(19, 6)
+  unit_msr            String?   @db.VarChar(100)
+  received_by         String    @db.VarChar(255)
+  received_by_user_id String?   @db.VarChar(255)
+  remarks             String?
+  batch_key           String?   @db.VarChar(100) // Links to warehouse_receive_attachment
+  received_at         DateTime  @default(now()) @db.Timestamp(6)
+  created_at          DateTime  @default(now()) @db.Timestamp(6)
+  updated_at          DateTime  @default(now()) @db.Timestamp(6)
+  // Confirm status fields
+  confirm_status      String    @default("waiting") @db.VarChar(20) // waiting, confirmed, rejected
+  confirm_remarks     String?   // Reason for rejection
+  confirmed_at        DateTime? @db.Timestamp(6)
+  confirmed_by        String?   @db.VarChar(255)
+
+  @@index([pr_doc_num], map: "idx_warehouse_receivegood_pr_doc_num")
+  @@index([pr_line_id], map: "idx_warehouse_receivegood_pr_line_id")
+  @@index([received_at], map: "idx_warehouse_receivegood_received_at")
+  @@index([batch_key], map: "idx_warehouse_receivegood_batch_key")
+  @@index([confirm_status], map: "idx_warehouse_receivegood_confirm_status")
+}
+
 model wo_detail {
   id            Int       @id @default(autoincrement())
   wo_doc_entry  Int
@@ -545,6 +696,36 @@ model wo_detail {
 
   @@index([wo_doc_entry], map: "idx_wo_detail_wo_doc_entry")
   @@index([wo_doc_num], map: "idx_wo_detail_wo_doc_num")
+}
+
+model wo_gi_detail {
+  id             Int       @id @default(autoincrement())
+  wo_doc_num     Int
+  wo_series_name String?   @db.VarChar(50)
+  gi_doc_num     Int
+  gi_doc_date    DateTime? @db.Date
+  wtq_doc_date   DateTime? @db.Date
+  item_code      String?   @db.VarChar(100)
+  description    String?
+  quantity       Decimal?  @db.Decimal(19, 6)
+  unit_msr       String?   @db.VarChar(50)
+  inm_price      Decimal?  @db.Decimal(19, 6)
+  stock_value    Decimal?  @db.Decimal(19, 6)
+  ocr_code       String?   @db.VarChar(50)
+  ocr_code2      String?   @db.VarChar(50)
+  ocr_name       String?   @db.VarChar(255)
+  ocr_name2      String?   @db.VarChar(255)
+  ocr_code4      String?   @db.VarChar(50)
+  project        String?   @db.VarChar(100)
+  emp_name       String?   @db.VarChar(255)
+  pr_for         String?   @db.VarChar(255)
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([gi_doc_num], map: "idx_wo_gi_detail_gi_doc_num")
+  @@index([item_code], map: "idx_wo_gi_detail_item_code")
+  @@index([wo_doc_num], map: "idx_wo_gi_detail_wo_doc_num")
 }
 
 model wo_master {
@@ -600,92 +781,31 @@ model wo_master {
   @@index([wr_doc_num], map: "idx_wo_master_wr_doc_num")
 }
 
-/// PR Document Receipt - เก็บข้อมูลการรับเอกสาร PR ล่าสุด
-model pr_document_receipt {
-  id                     Int       @id @default(autoincrement())
-  pr_doc_num             Int       @unique
-  receipt_date           DateTime  @db.Date
-  receipt_datetime       DateTime? @db.Timestamp(6)  // วันเวลาที่กดยืนยัน (เวลาไทย)
-  received_by            String    @db.VarChar(255)
-  received_by_user_id    String?   @db.VarChar(255)
-  ocr_code2              String?   @db.VarChar(50)   // OCR Code2 ที่ใช้ดึงผู้อนุมัติ
-  line_approvers         Json?                        // ผู้อนุมัติตามสายงาน (snapshot)
-  cost_center_approvers  Json?                        // ผู้อนุมัติตาม Cost Center (snapshot)
-  // Individual approval tracking
-  // ผู้ขอซื้อ approval (ใครก็ได้สามารถ approve ได้)
-  requester_approval_by            String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (ผู้ขอซื้อ)
-  requester_approval_by_user_id    String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (ผู้ขอซื้อ)
-  requester_approval_at            DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (ผู้ขอซื้อ)
-  // ผู้อนุมัติตามสายงาน (มีกำหนดผู้อนุมัติที่แน่นอน)
-  line_approval_by            String?   @db.VarChar(255)  // ชื่อผู้อนุมัติตามสายงาน
-  line_approval_by_user_id    String?   @db.VarChar(255)  // User ID ผู้อนุมัติตามสายงาน
-  line_approval_at            DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติตามสายงาน
-  // ผู้อนุมัติตาม Cost Center (มีกำหนดผู้อนุมัติที่แน่นอน)
-  cost_center_approval_by          String?   @db.VarChar(255)  // ชื่อผู้อนุมัติตาม Cost Center
-  cost_center_approval_by_user_id  String?   @db.VarChar(255)  // User ID ผู้อนุมัติตาม Cost Center
-  cost_center_approval_at          DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติตาม Cost Center
-  // งานจัดซื้อพัสดุ (เฉพาะ role Manager)
-  procurement_approval_by          String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (งานจัดซื้อพัสดุ)
-  procurement_approval_by_user_id  String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (งานจัดซื้อพัสดุ)
-  procurement_approval_at          DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (งานจัดซื้อพัสดุ)
-  // VP-C (เฉพาะ role Approval)
-  vpc_approval_by                  String?   @db.VarChar(255)  // ชื่อผู้อนุมัติ (VP-C)
-  vpc_approval_by_user_id          String?   @db.VarChar(255)  // User ID ผู้อนุมัติ (VP-C)
-  vpc_approval_at                  DateTime? @db.Timestamp(6)  // วันเวลาที่อนุมัติ (VP-C)
-  created_at             DateTime? @default(now()) @db.Timestamp(6)
-  updated_at             DateTime? @default(now()) @db.Timestamp(6)
+model wo_po_detail {
+  id             Int       @id @default(autoincrement())
+  wo_doc_num     Int
+  wo_series_name String?   @db.VarChar(50)
+  pr_doc_num     Int?
+  pr_series_name String?   @db.VarChar(50)
+  po_doc_num     Int
+  po_doc_date    DateTime? @db.Date
+  po_canceled    String?   @db.VarChar(1)
+  po_line_num    Int?
+  item_code      String?   @db.VarChar(100)
+  description    String?
+  quantity       Decimal?  @db.Decimal(19, 6)
+  unit_msr       String?   @db.VarChar(50)
+  price          Decimal?  @db.Decimal(19, 6)
+  line_total     Decimal?  @db.Decimal(19, 6)
+  requester      String?   @db.VarChar(255)
+  grpo_doc_num   Int?
+  grpo_doc_date  DateTime? @db.Date
+  last_sync_date DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
 
-  @@index([pr_doc_num], map: "idx_pr_document_receipt_pr_doc_num")
-  @@index([receipt_date], map: "idx_pr_document_receipt_receipt_date")
-  @@index([received_by_user_id], map: "idx_pr_document_receipt_user_id")
-}
-
-/// PR Document Receipt History - เก็บประวัติการแก้ไขวันที่รับเอกสาร (Audit Trail)
-model pr_document_receipt_history {
-  id                  Int       @id @default(autoincrement())
-  pr_doc_num          Int
-  action              String    @db.VarChar(10)
-  edit_count          Int?      @default(0)
-  old_receipt_date    DateTime? @db.Date
-  new_receipt_date    DateTime  @db.Date
-  received_by         String    @db.VarChar(255)
-  received_by_user_id String?   @db.VarChar(255)
-  created_at          DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([pr_doc_num], map: "idx_pr_document_receipt_history_pr_doc_num")
-  @@index([action], map: "idx_pr_document_receipt_history_action")
-  @@index([created_at(sort: Desc)], map: "idx_pr_document_receipt_history_created_at")
-}
-
-/// PR Document Approval - เก็บข้อมูลการอนุมัติเอกสาร PR ล่าสุด
-model pr_document_approval {
-  id                   Int       @id @default(autoincrement())
-  pr_doc_num           Int       @unique
-  approval_status      String    @db.VarChar(20)
-  reason               String?   @db.Text
-  approved_by          String?   @db.VarChar(255)
-  approved_by_user_id  String?   @db.VarChar(255)
-  approved_at          DateTime  @default(now()) @db.Timestamp(6)
-  created_at           DateTime? @default(now()) @db.Timestamp(6)
-  updated_at           DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([pr_doc_num], map: "idx_pr_document_approval_pr_doc_num")
-  @@index([approval_status], map: "idx_pr_document_approval_status")
-}
-
-/// PR Document Approval History - เก็บประวัติการอนุมัติเอกสาร PR ทั้งหมด
-model pr_document_approval_history {
-  id                   Int       @id @default(autoincrement())
-  pr_doc_num           Int
-  approval_status      String    @db.VarChar(20)
-  reason               String?   @db.Text
-  approved_by          String?   @db.VarChar(255)
-  approved_by_user_id  String?   @db.VarChar(255)
-  approved_at          DateTime  @db.Timestamp(6)
-  created_at           DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([pr_doc_num], map: "idx_pr_document_approval_history_pr_doc_num")
-  @@index([created_at(sort: Desc)], map: "idx_pr_document_approval_history_created_at")
+  @@index([po_doc_num], map: "idx_wo_po_detail_po_doc_num")
+  @@index([wo_doc_num], map: "idx_wo_po_detail_wo_doc_num")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -708,36 +828,54 @@ model wo_status {
   @@index([wr_doc_num], map: "idx_wo_status_wr_doc_num")
 }
 
-// W Series Tracking - เชื่อมโยง PO, PR, WO, WR, WA, WC
-model w_series_tracking {
-  id         Int       @id @default(autoincrement())
-  po_doc_num Int?      // เลขที่ PO (ถ้ามี)
-  pr_no      String?   @db.VarChar(50) // เลขที่ PR (ถ้ามี)
-  wo_doc_num Int       // เลขที่ WO (บังคับ)
-  wr_doc_num Int?      // เลขที่ WR (ถ้ามี)
-  wa_doc_num Int?      // เลขที่ WA (ถ้ามี)
-  wc_doc_num Int?      // เลขที่ WC (ถ้ามี)
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-  updated_at DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([po_doc_num], map: "idx_w_series_po_doc_num")
-  @@index([pr_no], map: "idx_w_series_pr_no")
-  @@index([wo_doc_num], map: "idx_w_series_wo_doc_num")
-  @@index([wr_doc_num], map: "idx_w_series_wr_doc_num")
-  @@index([wa_doc_num], map: "idx_w_series_wa_doc_num")
-  @@index([wc_doc_num], map: "idx_w_series_wc_doc_num")
-}
-
-// W Series Sync Log สำหรับเก็บประวัติการ sync W Series
-model w_series_sync_log {
+model wo_summary {
   id               Int       @id @default(autoincrement())
-  sync_date        DateTime  @default(now()) @db.Timestamp(6)
-  sync_type        String    @db.VarChar(20) // FULL (ล้างข้อมูลเก่า)
-  records_synced   Int?      @default(0)
-  duration_seconds Decimal?  @db.Decimal(10, 2)
-  status           String    @db.VarChar(20) // SUCCESS, FAILED
-  error_message    String?
+  wo_doc_num       Int
+  wo_doc_entry     Int?
+  wo_series_name   String?   @db.VarChar(50)
+  obj_type         String?   @db.VarChar(20)
+  doc_date         DateTime? @db.Date
+  pr_for           String?
+  pr_mac           String?   @db.VarChar(255)
+  item_name        String?   @db.VarChar(255)
+  req_name         String?   @db.VarChar(255)
+  department       String?   @db.VarChar(100)
+  dept_name        String?   @db.VarChar(255)
+  wo_order_1       String?
+  wo_respond_by    String?   @db.VarChar(255)
+  wo_respond_1     String?
+  wo_respond_2     String?
+  wo_respond_3     String?
+  wo_note_order    String?
+  wo_u_date        DateTime? @db.Timestamp(6)
+  wo_u_finish      DateTime? @db.Timestamp(6)
+  wo_close_date    DateTime? @db.Timestamp(6)
+  wr_series_name   String?   @db.VarChar(50)
+  wr_doc_num       Int?
+  wr_close_date    DateTime? @db.Timestamp(6)
+  wr_approver      String?   @db.VarChar(255)
+  wa_series_name   String?   @db.VarChar(50)
+  wa_doc_num       Int?
+  wa_finish_date   DateTime? @db.Timestamp(6)
+  wa_plan_to_work  DateTime? @db.Timestamp(6)
+  wa_start_work    DateTime? @db.Timestamp(6)
+  wa_close_date    DateTime? @db.Timestamp(6)
+  u_finish_date_2  DateTime? @db.Date
+  wc_series_name   String?   @db.VarChar(50)
+  wc_doc_num       Int?
+  wc_close_date    DateTime? @db.Timestamp(6)
+  wa_mc_stop       DateTime? @db.Timestamp(6)
+  wa_mc_start      DateTime? @db.Timestamp(6)
+  due_mc_stop      Decimal?  @db.Decimal(10, 2)
+  wc_reason_1      String?
+  wc_work_commit_1 String?
+  wo_approver      String?   @db.VarChar(255)
+  last_sync_date   DateTime? @default(now()) @db.Timestamp(6)
   created_at       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
 
-  @@index([sync_date])
+  @@index([wa_doc_num], map: "idx_wo_summary_wa_doc_num")
+  @@index([wc_doc_num], map: "idx_wo_summary_wc_doc_num")
+  @@index([wo_doc_num], map: "idx_wo_summary_wo_doc_num")
+  @@index([wr_doc_num], map: "idx_wo_summary_wr_doc_num")
 }

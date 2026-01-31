@@ -11,6 +11,7 @@ import { prTrackingRouter } from "./pr-tracking";
 import { prReceiptRouter } from "./pr-receipt";
 import { prApprovalRouter } from "./pr-approval";
 import { prReportsRouter } from "./pr-reports";
+import { prWarehouseRouter } from "./pr-warehouse";
 
 // Merge all sub-routers
 export const prRouter = createTRPCRouter({
@@ -31,4 +32,7 @@ export const prRouter = createTRPCRouter({
 
   // PR Reports (getDelayedPRsGrouped, triggerDelayedNotification)
   ...prReportsRouter._def.procedures,
+
+  // PR Warehouse (saveReceiveGoods, getReceivedByPR, getAllReceived, deleteReceived)
+  ...prWarehouseRouter._def.procedures,
 });
