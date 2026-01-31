@@ -203,21 +203,26 @@ export const prOverviewRouter = createTRPCRouter({
       // ใช้ Set เก็บ PO ที่ถูก match แล้ว เพื่อไม่ให้แสดงซ้ำ
       const matchedPOKeys = new Set<string>();
 
-      const linesWithPO = prLines.map((line, index) => {
-        // 1. ลอง match ด้วย line_num ก่อน
-        let matchingPOs = poLines.filter((po: any) =>
-          po.po_line_num === line.line_num
-        );
+      const linesWithPO = prLines.map((line) => {
+        // Match PO กับ PR line โดยใช้ item_code เป็นหลัก
+        // ถ้า item_code เหมือนกัน = จับคู่กัน
+        let matchingPOs = poLines.filter((po: any) => {
+          const key = `${po.po_doc_num}-${po.po_line_num}`;
+          // ถ้าถูก match ไปแล้ว ข้าม
+          if (matchedPOKeys.has(key)) return false;
 
-        // 2. ถ้าไม่มี match และเป็น line แรก -> เอา PO ที่ยังไม่ถูก match มาแสดง (fallback)
-        if (matchingPOs.length === 0 && index === 0) {
-          matchingPOs = poLines.filter((po: any) => {
-            const key = `${po.po_doc_num}-${po.po_line_num}`;
-            // เอาเฉพาะ PO ที่ line_num ไม่ตรงกับ PR line ใดเลย
-            const hasMatchingPRLine = prLines.some(pl => pl.line_num === po.po_line_num);
-            return !hasMatchingPRLine && !matchedPOKeys.has(key);
-          });
-        }
+          // Match โดยใช้ item_code
+          if (line.item_code && po.po_item_code) {
+            return line.item_code === po.po_item_code;
+          }
+
+          // Fallback: ถ้าไม่มี item_code ให้ match ด้วย description
+          if (line.description && po.po_description) {
+            return line.description === po.po_description;
+          }
+
+          return false;
+        });
 
         // บันทึก PO ที่ถูก match แล้ว
         matchingPOs.forEach((po: any) => {
