@@ -24,7 +24,7 @@ export default async function handler(
   // GET - ดึงรายการ OCR Codes ทั้งหมด
   if (req.method === "GET") {
     try {
-      const ocrCodes = await db.oCR_codeandName.findMany({
+      const ocrCodes = await db.ocr_code_and_name.findMany({
         orderBy: { name: 'asc' },
       });
 
@@ -64,7 +64,7 @@ export default async function handler(
         console.log(`[OCR-SYNC] Found ${sapRecords.length} records in SAP OUDP`);
 
         // Get current records from PostgreSQL
-        const currentRecords = await db.oCR_codeandName.findMany();
+        const currentRecords = await db.ocr_code_and_name.findMany();
         const currentCodesSet = new Set(currentRecords.map(r => r.code));
         const sapCodesSet = new Set(sapRecords.map((r: any) => r.Code));
 
@@ -86,7 +86,7 @@ export default async function handler(
           if (existing) {
             // Update if changed
             if (existing.name !== name || existing.remarks !== remarks || existing.father !== father) {
-              await db.oCR_codeandName.update({
+              await db.ocr_code_and_name.update({
                 where: { code },
                 data: {
                   name,
@@ -99,13 +99,14 @@ export default async function handler(
             }
           } else {
             // Create new record
-            await db.oCR_codeandName.create({
+            await db.ocr_code_and_name.create({
               data: {
                 code,
                 name,
                 remarks,
                 father,
                 lastSyncAt: now,
+                updatedAt: now,
               },
             });
             created++;
@@ -169,7 +170,7 @@ export default async function handler(
         updateData.costCenterApproverId = costCenterApproverId || null;
       }
 
-      const updatedOcr = await db.oCR_codeandName.update({
+      const updatedOcr = await db.ocr_code_and_name.update({
         where: { id },
         data: updateData,
       });

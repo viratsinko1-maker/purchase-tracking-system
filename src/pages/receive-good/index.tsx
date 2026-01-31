@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
@@ -47,6 +47,13 @@ export default function ReceiveGoodList() {
 
   const [searchText, setSearchText] = useState("");
   const [expandedPRs, setExpandedPRs] = useState<Set<string>>(new Set());
+
+  // Read search parameter from URL on mount
+  useEffect(() => {
+    if (router.isReady && router.query.search) {
+      setSearchText(router.query.search as string);
+    }
+  }, [router.isReady, router.query.search]);
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

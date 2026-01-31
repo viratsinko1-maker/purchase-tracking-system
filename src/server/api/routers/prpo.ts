@@ -186,6 +186,7 @@ export const prpoRouter = createTRPCRouter({
       await ctx.db.purchaseRequestPO.deleteMany({});
 
       // นำข้อมูลเข้า PostgreSQL
+      const now = new Date();
       const insertPromises = records.map((record: any) =>
         ctx.db.purchaseRequestPO.create({
           data: {
@@ -204,6 +205,7 @@ export const prpoRouter = createTRPCRouter({
             poQuantity: record.PO_Quantity,
             poUnit: record.PO_Unit,
             poLineNum: record.PO_LineNum,
+            updatedAt: now,
           },
         })
       );

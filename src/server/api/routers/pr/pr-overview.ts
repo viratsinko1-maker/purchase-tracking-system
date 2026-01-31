@@ -604,8 +604,8 @@ export const prOverviewRouter = createTRPCRouter({
 
       const giRecords = giRecordsRaw.map(gi => {
         // คำนวณมูลค่า: ใช้ stock_value ก่อน, ถ้าไม่มีให้คำนวณจาก quantity * inm_price
-        let lineTotal = gi.stock_value;
-        if (!lineTotal && gi.quantity && gi.inm_price) {
+        let lineTotal: number | null = gi.stock_value ? Number(gi.stock_value) : null;
+        if (lineTotal === null && gi.quantity && gi.inm_price) {
           lineTotal = Number(gi.quantity) * Number(gi.inm_price);
         }
         return {

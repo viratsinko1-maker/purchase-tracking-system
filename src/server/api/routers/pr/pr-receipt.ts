@@ -42,7 +42,7 @@ export const prReceiptRouter = createTRPCRouter({
         };
       }
 
-      const ocrCode = await ctx.db.oCR_codeandName.findFirst({
+      const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
         where: { name: primaryOcrCode2 },
       });
 
@@ -132,7 +132,7 @@ export const prReceiptRouter = createTRPCRouter({
       let costCenterApprovers: any[] = [];
 
       if (primaryOcrCode2) {
-        const ocrCode = await ctx.db.oCR_codeandName.findFirst({
+        const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
           where: { name: primaryOcrCode2 },
         });
 

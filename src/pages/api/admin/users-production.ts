@@ -115,6 +115,7 @@ export default async function handler(
               // Create new user with default password and role
               await db.user_production.create({
                 data: {
+                  id: tmkUser.id, // Use TMK user ID as primary key
                   email: email,
                   userId: email, // Use email as userId for login
                   username: tmkUser.name,
@@ -124,6 +125,7 @@ export default async function handler(
                   isActive: true,
                   sourceId: tmkUser.id,
                   lastSyncAt: new Date(),
+                  updatedAt: new Date(),
                 },
               });
               inserted++;

@@ -155,6 +155,25 @@ export default function ReceiveGoodReport() {
     return name;
   };
 
+  // Format time difference between two dates
+  const formatTimeDiff = (receivedAt: Date, confirmedAt: Date | null) => {
+    if (!confirmedAt) return '-';
+    const diffMs = confirmedAt.getTime() - receivedAt.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) {
+      const remainingHours = diffHours % 24;
+      return `${diffDays}d ${remainingHours}h`;
+    } else if (diffHours > 0) {
+      const remainingMins = diffMins % 60;
+      return `${diffHours}h ${remainingMins}m`;
+    } else {
+      return `${diffMins}m`;
+    }
+  };
+
   // Get status color for card
   const getCardStatusClass = (pr: PRGroup) => {
     if (pr.waitingCount === 0 && pr.rejectedCount === 0 && pr.confirmedCount > 0) {
@@ -283,7 +302,7 @@ export default function ReceiveGoodReport() {
       {/* PR Detail Modal */}
       {selectedPR && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="rounded-lg bg-white shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="rounded-lg bg-white shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="p-6 border-b flex items-center justify-between">
               <div>
@@ -377,6 +396,8 @@ export default function ReceiveGoodReport() {
                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
                               <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Qty</th>
                               <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Status</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Confirmed At</th>
+                              <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Time</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -411,6 +432,25 @@ export default function ReceiveGoodReport() {
                                       ⏳ Waiting
                                     </span>
                                   )}
+                                </td>
+                                <td className="px-4 py-2 text-gray-600 text-xs whitespace-nowrap">
+                                  {item.confirmed_at ? (
+                                    <div>
+                                      <div>{formatThaiDateTime(item.confirmed_at)}</div>
+                                      {item.confirmed_by && (
+                                        <div className="text-gray-400">by {item.confirmed_by}</div>
+                                      )}
+                                    </div>
+                                  ) : '-'}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  {item.confirm_status !== 'waiting' && item.confirmed_at ? (
+                                    <span className={`text-xs font-medium ${
+                                      item.confirm_status === 'confirmed' ? 'text-green-600' : 'text-red-600'
+                                    }`}>
+                                      {formatTimeDiff(batch.received_at, item.confirmed_at)}
+                                    </span>
+                                  ) : '-'}
                                 </td>
                               </tr>
                             ))}

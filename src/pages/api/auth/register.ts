@@ -1,4 +1,5 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
+import { randomUUID } from "crypto";
 import { db } from "~/server/db";
 import { getClientIp } from "~/server/utils/getClientIp";
 
@@ -46,6 +47,7 @@ export default async function handler(
     // Create new user with default settings
     const newUser = await db.user.create({
       data: {
+        id: randomUUID(),
         userId: null, // Admin จะต้องมาตั้งทีหลัง
         username: username,
         name: name,

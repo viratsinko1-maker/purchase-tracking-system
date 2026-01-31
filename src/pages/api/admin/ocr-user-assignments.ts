@@ -124,7 +124,7 @@ export default async function handler(
       }
 
       // ตรวจสอบว่า OCR code มีอยู่จริง
-      const ocrCode = await db.oCR_codeandName.findUnique({
+      const ocrCode = await db.ocr_code_and_name.findUnique({
         where: { id: ocrCodeId },
       });
 
@@ -168,6 +168,7 @@ export default async function handler(
           userProductionId,
           role: role || "member",
           createdBy,
+          updatedAt: new Date(),
         },
       });
 

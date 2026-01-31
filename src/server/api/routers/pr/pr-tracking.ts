@@ -402,7 +402,7 @@ ${input.responseNote || '-'}
     .query(async ({ ctx, input }) => {
       const responses = await ctx.db.tracking_response_log.findMany({
         where: { pr_doc_num: input.prNo },
-        include: { user_tracking: true },
+        include: { user_tracking_log: true },
         orderBy: { responded_at: 'desc' },
       });
       return responses;

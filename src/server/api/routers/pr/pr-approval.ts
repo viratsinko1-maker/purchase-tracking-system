@@ -40,7 +40,7 @@ export const prApprovalRouter = createTRPCRouter({
         let costCenterApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
 
         if (primaryOcrCode2) {
-          const ocrCode = await ctx.db.oCR_codeandName.findFirst({
+          const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
             where: { name: primaryOcrCode2 },
           });
 

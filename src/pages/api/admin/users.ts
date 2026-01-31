@@ -1,5 +1,6 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
+import { randomUUID } from "crypto";
 
 export default async function handler(
   req: NextApiRequest,
@@ -58,6 +59,7 @@ export default async function handler(
 
       const newUser = await db.user.create({
         data: {
+          id: randomUUID(),
           userId: userId || null,
           username: username,
           name: name || username,
