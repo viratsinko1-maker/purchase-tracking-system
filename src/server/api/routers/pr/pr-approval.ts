@@ -3,12 +3,14 @@
  */
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure, authenticatedProcedure } from "~/server/api/trpc";
 import { sendCustomNotification } from "~/server/services/telegram";
+import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
 
 export const prApprovalRouter = createTRPCRouter({
   // 🔹 อนุมัติโดยผู้ขอซื้อ, ผู้อนุมัติตามสายงาน, Cost Center, งานจัดซื้อพัสดุ หรือ VP-C
-  approveIndividual: publicProcedure
+  // Note: Uses authenticatedProcedure - internal logic handles role/workflow checks
+  approveIndividual: authenticatedProcedure
     .input(z.object({
       prNo: z.number(),
       approvalType: z.enum(['requester', 'line', 'cost_center', 'procurement', 'vpc']),
@@ -200,6 +202,94 @@ export const prApprovalRouter = createTRPCRouter({
         data: updateDataMap[input.approvalType]!,
       });
 
+      // 🔹 KPI Tracking: บันทึก approval KPI metric
+      try {
+        // Determine previous stage timestamp
+        const previousStageMap: Record<string, keyof typeof receipt | null> = {
+          requester: null, // ไม่มี stage ก่อนหน้า
+          line: 'requester_approval_at',
+          cost_center: 'line_approval_at',
+          procurement: 'cost_center_approval_at',
+          vpc: 'procurement_approval_at',
+        };
+
+        const previousStageField = previousStageMap[input.approvalType];
+        const previousStageAt = previousStageField ? receipt[previousStageField] as Date | null : null;
+
+        // Calculate duration (seconds from previous stage or from receipt_datetime for requester)
+        let durationSeconds = 0;
+        let effectivePreviousAt: Date | null = null;
+
+        if (input.approvalType === 'requester') {
+          // For requester: duration from receipt_datetime
+          effectivePreviousAt = receipt.receipt_datetime;
+        } else {
+          effectivePreviousAt = previousStageAt;
+        }
+
+        if (effectivePreviousAt) {
+          durationSeconds = Math.floor((thaiDateTime.getTime() - new Date(effectivePreviousAt).getTime()) / 1000);
+          if (durationSeconds < 0) durationSeconds = 0;
+        }
+
+        // Get SLA config for this stage
+        const slaConfig = await ctx.db.kpi_sla_config.findFirst({
+          where: {
+            kpi_type: 'approval',
+            is_active: true,
+            OR: [
+              { stage: input.approvalType },
+              { stage: null }, // Default for all stages
+            ],
+          },
+          orderBy: { stage: 'desc' }, // Specific stage takes priority over null
+        });
+
+        const slaTargetMinutes = slaConfig?.target_minutes ?? null;
+        const isOnTime = slaTargetMinutes !== null
+          ? (durationSeconds / 60) <= slaTargetMinutes
+          : null;
+
+        // Insert KPI metric
+        await ctx.db.approval_kpi_metric.create({
+          data: {
+            pr_doc_num: input.prNo,
+            approval_stage: input.approvalType,
+            user_id: input.approverUserId || 'unknown',
+            user_name: input.approverName,
+            previous_stage_at: effectivePreviousAt,
+            approved_at: thaiDateTime,
+            duration_seconds: durationSeconds,
+            duration_minutes: durationSeconds / 60,
+            sla_target_minutes: slaTargetMinutes,
+            is_on_time: isOnTime,
+            ocr_code2: receipt.ocr_code2,
+          },
+        });
+      } catch (kpiError) {
+        // Log error but don't fail the approval
+        console.error('[KPI] Failed to record approval KPI metric:', kpiError);
+      }
+
+      // Audit log: PR Approval
+      createAuditLog(ctx.db, {
+        userId: input.approverUserId,
+        userName: input.approverName,
+        action: "APPROVE_PR",
+        tableName: "pr_document_receipt",
+        recordId: String(input.prNo),
+        prNo: input.prNo,
+        newValues: {
+          approvalType: input.approvalType,
+          approvedBy: input.approverName,
+          approvedAt: thaiDateTime,
+        },
+        description: `อนุมัติ PR #${input.prNo} (${approvalNames[input.approvalType]})`,
+        metadata: {
+          approverRole: input.approverRole,
+        },
+      }).catch(console.error);
+
       return {
         success: true,
         approvalType: input.approvalType,
@@ -210,7 +300,7 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 ล้างการอนุมัติ (Admin only)
-  clearIndividualApproval: publicProcedure
+  clearIndividualApproval: createTableProcedure('pr_approve', 'clear')
     .input(z.object({
       prNo: z.number(),
       approvalType: z.enum(['requester', 'line', 'cost_center', 'procurement', 'vpc']),
@@ -288,6 +378,23 @@ export const prApprovalRouter = createTRPCRouter({
       const clearedStages = approvalOrder.slice(targetIndex);
       const clearedStageNames = clearedStages.map(s => approvalTypeLabelMap[s]).join(', ');
 
+      // Audit log: Clear PR Approval
+      createAuditLog(ctx.db, {
+        action: "CLEAR_APPROVAL",
+        tableName: "pr_document_receipt",
+        recordId: String(input.prNo),
+        prNo: input.prNo,
+        oldValues: {
+          clearedStages: clearedStages,
+        },
+        description: clearedStages.length > 1
+          ? `ล้างการอนุมัติ PR #${input.prNo} แบบต่อเนื่อง: ${clearedStageNames}`
+          : `ล้างการอนุมัติ PR #${input.prNo} ${approvalTypeLabelMap[input.approvalType]}`,
+        metadata: {
+          clearedByRole: input.clearedByRole,
+        },
+      }).catch(console.error);
+
       return {
         success: true,
         approvalType: input.approvalType,
@@ -300,7 +407,7 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 นับจำนวน PR ที่รอการอนุมัติของฉัน
-  getMyPendingApprovalsCount: publicProcedure
+  getMyPendingApprovalsCount: createTableProcedure('pr_approval', 'read')
     .input(z.object({
       userId: z.string(),
       userName: z.string().optional(),
@@ -353,7 +460,7 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงรายการ PR ที่รอการอนุมัติของฉัน
-  getMyPendingApprovals: publicProcedure
+  getMyPendingApprovals: createTableProcedure('pr_approval', 'read')
     .input(z.object({
       userId: z.string(),
       userName: z.string().optional(),
@@ -452,7 +559,7 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงข้อมูลการอนุมัติเอกสาร PR
-  getDocumentApproval: publicProcedure
+  getDocumentApproval: createTableProcedure('pr_approval', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const approval = await ctx.db.pr_document_approval.findUnique({
@@ -462,7 +569,8 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 บันทึกหรือแก้ไขการอนุมัติเอกสาร PR
-  saveDocumentApproval: publicProcedure
+  // Note: Uses authenticatedProcedure - internal logic handles role checks
+  saveDocumentApproval: authenticatedProcedure
     .input(z.object({
       prNo: z.number(),
       approvalStatus: z.enum(['Approve', 'Reject', 'Waiting']),
@@ -513,6 +621,34 @@ export const prApprovalRouter = createTRPCRouter({
         });
       }
 
+      // Audit log: Document Approval
+      createAuditLog(ctx.db, {
+        userId: input.approvedByUserId,
+        userName: input.approvedBy,
+        action: input.approvalStatus === 'Approve' ? "APPROVE_PR" :
+               input.approvalStatus === 'Reject' ? "REJECT_PR" : AuditAction.UPDATE,
+        tableName: "pr_document_approval",
+        recordId: String(input.prNo),
+        prNo: input.prNo,
+        oldValues: existing ? {
+          approvalStatus: existing.approval_status,
+          reason: existing.reason,
+        } : undefined,
+        newValues: {
+          approvalStatus: input.approvalStatus,
+          reason: input.reason,
+          approvedBy: input.approvedBy,
+        },
+        description: `${existing ? 'แก้ไข' : 'บันทึก'}การอนุมัติเอกสาร PR #${input.prNo}: ${
+          input.approvalStatus === 'Approve' ? 'อนุมัติ' :
+          input.approvalStatus === 'Reject' ? 'ปฏิเสธ' : 'รอดำเนินการ'
+        }`,
+        metadata: {
+          prJobName: input.prJobName,
+          prRequester: input.prRequester,
+        },
+      }).catch(console.error);
+
       // Send Telegram notification
       try {
         const statusText =
@@ -555,7 +691,7 @@ export const prApprovalRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึง PR ที่รอการอนุมัติ
-  getPendingApproval: publicProcedure
+  getPendingApproval: createTableProcedure('pr_approval', 'read')
     .query(async ({ ctx }) => {
       const data = await ctx.db.$queryRawUnsafe(`
         SELECT

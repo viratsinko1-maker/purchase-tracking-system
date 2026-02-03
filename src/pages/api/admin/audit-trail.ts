@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "~/server/db";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -36,10 +37,15 @@ export default async function handler(
 
     return res.status(405).json({ error: "Method not allowed" });
   } catch (error) {
-    console.error("Activity trail API error:", error);
+    console.error("Audit trail API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
+
+// Apply permission middleware - protect admin audit trail
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_audit', action: 'read' },
+});

@@ -2,6 +2,7 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import { getClientIp } from "~/server/utils/getClientIp";
 import bcrypt from "bcrypt";
+import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
 
 export default async function handler(
   req: NextApiRequest,
@@ -79,35 +80,44 @@ export default async function handler(
       return res.status(403).json({ error: "บัญชีผู้ใช้ของคุณถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ" });
     }
 
-    // Log LOGIN activity
-    try {
-      const ipAddress = getClientIp(req);
+    // Log LOGIN activity using audit log helper (fire-and-forget)
+    const ipAddress = getClientIp(req);
+    createAuditLog(db, {
+      userId: user.id,
+      userName: user.name ?? user.username ?? undefined,
+      action: AuditAction.LOGIN,
+      tableName: "User",
+      recordId: user.id,
+      description: userSource === "production" ? 'ล็อคอินเข้าระบบ (Production)' : 'ล็อคอินเข้าระบบ',
+      metadata: {
+        userId: user.userId,
+        username: user.username,
+        source: userSource,
+      },
+      ipAddress,
+      computerName: computerName ?? undefined,
+    }).catch(console.error);
+    console.log('[LOGIN API] ✅ Activity logged for user:', user.id, 'IP:', ipAddress, 'Computer:', computerName || 'unknown', 'Source:', userSource);
 
-      // Get current time in Thailand timezone (UTC+7)
-      const now = new Date();
-      const thailandTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
-
-      await db.activity_trail.create({
-        data: {
-          user_id: user.id,
-          user_name: user.name ?? user.username ?? undefined,
-          ip_address: ipAddress,
-          computer_name: computerName ?? undefined,
-          action: 'LOGIN',
-          description: userSource === "production" ? 'ล็อคอินเข้าระบบ (Production)' : 'ล็อคอินเข้าระบบ',
-          metadata: {
-            userId: user.userId,
-            username: user.username,
-            source: userSource,
-          },
-          created_at: thailandTime,
-        },
-      });
-      console.log('[LOGIN API] ✅ Activity logged for user:', user.id, 'IP:', ipAddress, 'Computer:', computerName || 'unknown', 'Source:', userSource);
-    } catch (error) {
-      console.error('[LOGIN API] ❌ Failed to log activity:', error);
-      // Don't fail the login if activity logging fails
-    }
+    // Create active session for heartbeat tracking (fire-and-forget)
+    db.active_session.upsert({
+      where: { user_id: user.id },
+      update: {
+        last_heartbeat: new Date(),
+        session_start: new Date(),
+        ip_address: ipAddress,
+        computer_name: computerName ?? null,
+        user_name: user.name ?? user.username ?? null,
+      },
+      create: {
+        user_id: user.id,
+        user_name: user.name ?? user.username ?? null,
+        ip_address: ipAddress,
+        computer_name: computerName ?? null,
+        last_heartbeat: new Date(),
+        session_start: new Date(),
+      },
+    }).catch((err) => console.error('[LOGIN API] Failed to create active session:', err));
 
     // Return user data (in a real app, you'd create a session/token here)
     return res.status(200).json({

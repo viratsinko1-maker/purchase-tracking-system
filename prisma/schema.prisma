@@ -95,22 +95,41 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model password_reset_token {
+  id        Int      @id @default(autoincrement())
+  email     String
+  token     String   @unique
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// Audit Trail - ประวัติการเปลี่ยนแปลงข้อมูลในระบบ
 model activity_trail {
   id            Int       @id @default(autoincrement())
   user_id       String?   @db.VarChar(255)
   user_name     String?   @db.VarChar(255)
   ip_address    String?   @db.VarChar(50)
   action        String    @db.VarChar(50)
+  table_name    String?   @db.VarChar(100)  // ชื่อ table ที่ถูกแก้ไข
+  record_id     String?   @db.VarChar(255)  // ID ของ record ที่ถูกแก้ไข
+  old_values    Json?                        // ค่าก่อนแก้ไข
+  new_values    Json?                        // ค่าหลังแก้ไข
   description   String?
   pr_no         Int?
   po_no         Int?
   tracking_id   Int?
   metadata      Json?
+  admin_note    String?                      // หมายเหตุจาก admin
   created_at    DateTime? @default(dbgenerated("((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text) AT TIME ZONE 'Asia/Bangkok'::text)")) @db.Timestamp(6)
   computer_name String?   @db.VarChar(255)
 
   @@index([action], map: "idx_activity_trail_action")
+  @@index([table_name], map: "idx_activity_trail_table_name")
   @@index([computer_name], map: "idx_activity_trail_computer_name")
   @@index([created_at(sort: Desc)], map: "idx_activity_trail_created_at")
   @@index([po_no], map: "idx_activity_trail_po_no")
@@ -581,6 +600,77 @@ model user_production {
   @@index([isActive])
 }
 
+/// System Role - จัดการ Role และลำดับความสำคัญ
+model system_role {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(50)   // ชื่อ Role (แสดงผล)
+  code        String    @unique @db.VarChar(20)   // รหัส Role (Admin, Approval, etc.)
+  priority    Int       @unique                    // ลำดับความสำคัญ: 1 = สูงสุด
+  description String?                              // คำอธิบาย
+  isActive    Boolean   @default(true)
+  isSystem    Boolean   @default(false)           // ป้องกันลบ Role สำคัญ
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime  @db.Timestamp(6)
+
+  permissions role_permission[]                   // สิทธิ์ของ Role
+
+  @@index([priority])
+  @@index([isActive])
+  @@index([code])
+}
+
+/// Role Permission - สิทธิ์ CRUD ของแต่ละ Role ต่อแต่ละ Table/Page
+model role_permission {
+  id          Int       @id @default(autoincrement())
+  roleId      Int                                  // FK to system_role
+  tableName   String    @db.VarChar(100)          // ชื่อ table หรือ page
+  canCreate   Boolean   @default(false)
+  canRead     Boolean   @default(false)
+  canUpdate   Boolean   @default(false)
+  canDelete   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime  @db.Timestamp(6)
+
+  role        system_role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, tableName])
+  @@index([roleId])
+  @@index([tableName])
+}
+
+/// User Table Permission - Override สิทธิ์เฉพาะบุคคล (เผื่ออนาคต)
+model user_table_permission {
+  id          Int       @id @default(autoincrement())
+  userId      String    @db.VarChar(255)          // FK to user
+  tableName   String    @db.VarChar(100)          // ชื่อ table หรือ page
+  canCreate   Boolean?                            // null = inherit from role
+  canRead     Boolean?
+  canUpdate   Boolean?
+  canDelete   Boolean?
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime  @db.Timestamp(6)
+
+  @@unique([userId, tableName])
+  @@index([userId])
+  @@index([tableName])
+}
+
+/// Table Metadata - ข้อมูล Table/Page สำหรับ Permission UI
+model table_metadata {
+  id           Int       @id @default(autoincrement())
+  tableName    String    @unique @db.VarChar(100) // ชื่อ table (unique key)
+  friendlyName String    @db.VarChar(100)         // ชื่อแสดงผลภาษาไทย
+  category     String    @db.VarChar(50)          // หมวดหมู่: pr, po, warehouse, admin
+  description  String?                            // คำอธิบาย
+  isActive     Boolean   @default(true)
+  displayOrder Int       @default(0)              // ลำดับการแสดงผล
+  createdAt    DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime  @db.Timestamp(6)
+
+  @@index([category])
+  @@index([isActive])
+}
+
 model user_tracking_log {
   id                    Int                     @id @default(autoincrement())
   pr_doc_num            Int
@@ -878,4 +968,104 @@ model wo_summary {
   @@index([wc_doc_num], map: "idx_wo_summary_wc_doc_num")
   @@index([wo_doc_num], map: "idx_wo_summary_wo_doc_num")
   @@index([wr_doc_num], map: "idx_wo_summary_wr_doc_num")
+}
+
+/// Active Session - ติดตาม session ที่ active อยู่ สำหรับ auto logout
+model active_session {
+  id             Int       @id @default(autoincrement())
+  user_id        String    @unique @db.VarChar(255)  // User ID (unique - 1 session per user)
+  user_name      String?   @db.VarChar(255)
+  ip_address     String?   @db.VarChar(50)
+  computer_name  String?   @db.VarChar(255)
+  last_heartbeat DateTime  @default(now()) @db.Timestamp(6)  // Last activity timestamp
+  session_start  DateTime  @default(now()) @db.Timestamp(6)  // When session started
+  created_at     DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([last_heartbeat], map: "idx_active_session_last_heartbeat")
+  @@index([user_id], map: "idx_active_session_user_id")
+}
+
+/// Session History - เก็บประวัติการใช้งานระบบ (Usage Analytics)
+model session_history {
+  id               Int       @id @default(autoincrement())
+  user_id          String    @db.VarChar(255)
+  user_name        String?   @db.VarChar(255)
+  ip_address       String?   @db.VarChar(50)
+  computer_name    String?   @db.VarChar(255)
+  session_start    DateTime  @db.Timestamp(6)              // เวลาเริ่ม session
+  session_end      DateTime  @db.Timestamp(6)              // เวลาจบ session
+  duration_seconds Int                                     // ระยะเวลาใช้งาน (วินาที)
+  duration_minutes Decimal   @db.Decimal(10, 2)            // ระยะเวลาใช้งาน (นาที)
+  logout_type      String    @db.VarChar(20)               // "manual" | "timeout" | "force_logout" | "kicked"
+  created_at       DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([user_id], map: "idx_session_history_user_id")
+  @@index([session_start], map: "idx_session_history_session_start")
+  @@index([session_end], map: "idx_session_history_session_end")
+  @@index([created_at], map: "idx_session_history_created_at")
+}
+
+/// KPI Approval Metric - เก็บ KPI เวลาที่ใช้ในการ approve แต่ละ stage
+model approval_kpi_metric {
+  id                 Int       @id @default(autoincrement())
+  pr_doc_num         Int                                    // PR number
+  approval_stage     String    @db.VarChar(20)              // "requester" | "line" | "cost_center" | "procurement" | "vpc"
+  user_id            String    @db.VarChar(255)             // Who approved
+  user_name          String    @db.VarChar(255)             // Name at time of approval
+  previous_stage_at  DateTime? @db.Timestamp(6)             // When previous stage completed (null for requester)
+  approved_at        DateTime  @db.Timestamp(6)             // When this user approved
+  duration_seconds   Int                                    // Time taken in seconds
+  duration_minutes   Decimal   @db.Decimal(10, 2)           // Time taken in minutes (for display)
+  sla_target_minutes Int?                                   // Target from config (null = no SLA)
+  is_on_time         Boolean?                               // true = within SLA, false = exceeded
+  ocr_code2          String?   @db.VarChar(50)              // Department code
+  created_at         DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([user_id], map: "idx_approval_kpi_metric_user_id")
+  @@index([approval_stage], map: "idx_approval_kpi_metric_stage")
+  @@index([pr_doc_num], map: "idx_approval_kpi_metric_pr_doc_num")
+  @@index([created_at], map: "idx_approval_kpi_metric_created_at")
+  @@index([is_on_time], map: "idx_approval_kpi_metric_is_on_time")
+}
+
+/// KPI SLA Config - ตั้งค่า SLA target สำหรับแต่ละ KPI type
+model kpi_sla_config {
+  id             Int       @id @default(autoincrement())
+  kpi_type       String    @db.VarChar(30)                  // "approval" | "receive_confirm"
+  stage          String?   @db.VarChar(30)                  // For approval: "requester"|"line"|etc. (null = all stages)
+  target_minutes Int                                        // SLA target in minutes
+  target_hours   Decimal?  @db.Decimal(10, 2)               // Computed: target_minutes / 60
+  description    String?                                    // Description for admin
+  is_active      Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamp(6)
+  updated_at     DateTime  @default(now()) @db.Timestamp(6)
+  created_by     String?   @db.VarChar(255)
+
+  @@unique([kpi_type, stage], map: "uq_kpi_sla_config_type_stage")
+  @@index([kpi_type], map: "idx_kpi_sla_config_type")
+  @@index([is_active], map: "idx_kpi_sla_config_active")
+}
+
+/// KPI Receive Confirm Metric - เก็บ KPI เวลาที่ใช้ในการ confirm รับของ
+model receive_confirm_kpi_metric {
+  id                 Int       @id @default(autoincrement())
+  pr_doc_num         Int                                    // PR number
+  batch_key          String    @db.VarChar(100)             // Batch key
+  user_id            String    @db.VarChar(255)             // Who confirmed
+  user_name          String    @db.VarChar(255)             // Name at time of confirmation
+  received_at        DateTime  @db.Timestamp(6)             // When goods were received
+  confirmed_at       DateTime  @db.Timestamp(6)             // When confirmed
+  duration_seconds   Int                                    // Time taken in seconds
+  duration_minutes   Decimal   @db.Decimal(10, 2)           // Time taken in minutes
+  sla_target_minutes Int?                                   // Target from config
+  is_on_time         Boolean?                               // true = within SLA
+  confirm_status     String    @db.VarChar(20)              // "confirmed" | "rejected"
+  items_count        Int                                    // จำนวน items ใน batch
+  created_at         DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([user_id], map: "idx_receive_confirm_kpi_user_id")
+  @@index([pr_doc_num], map: "idx_receive_confirm_kpi_pr_doc_num")
+  @@index([created_at], map: "idx_receive_confirm_kpi_created_at")
+  @@index([is_on_time], map: "idx_receive_confirm_kpi_is_on_time")
+  @@index([batch_key], map: "idx_receive_confirm_kpi_batch_key")
 }

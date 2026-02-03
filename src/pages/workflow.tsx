@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
+import { authFetch } from "~/lib/authFetch";
 
 interface OCRCode {
   id: number;
@@ -101,7 +102,7 @@ export default function Workflow() {
   const fetchOCRCodes = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/admin/ocr-codes");
+      const response = await authFetch("/api/admin/ocr-codes");
       const data = await response.json();
       if (data.success) {
         setOcrCodes(data.data);
@@ -116,7 +117,7 @@ export default function Workflow() {
   // Fetch assignment counts
   const fetchAssignmentCounts = async () => {
     try {
-      const response = await fetch("/api/admin/ocr-user-assignments");
+      const response = await authFetch("/api/admin/ocr-user-assignments");
       const data = await response.json();
       if (data.success) {
         const countMap = new Map<number, number>();
@@ -133,7 +134,7 @@ export default function Workflow() {
   // Fetch all assignments for approver tab
   const fetchAllAssignments = async () => {
     try {
-      const response = await fetch("/api/admin/ocr-user-assignments?all=true");
+      const response = await authFetch("/api/admin/ocr-user-assignments?all=true");
       const data = await response.json();
       if (data.success && data.data) {
         const newAssignments = new Map<number, Assignment[]>();
@@ -153,7 +154,7 @@ export default function Workflow() {
   // Fetch all approvers
   const fetchAllApprovers = async () => {
     try {
-      const response = await fetch("/api/admin/ocr-approvers?all=true");
+      const response = await authFetch("/api/admin/ocr-approvers?all=true");
       const data = await response.json();
       if (data.success && data.data) {
         const newApprovers = new Map<number, Approver[]>();
@@ -174,7 +175,7 @@ export default function Workflow() {
   const addApprover = async (ocrCodeId: number, userProductionId: string, approverType: "line" | "cost_center") => {
     setAddingApprover({ ocrId: ocrCodeId, type: approverType, userId: userProductionId });
     try {
-      const response = await fetch("/api/admin/ocr-approvers", {
+      const response = await authFetch("/api/admin/ocr-approvers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -203,7 +204,7 @@ export default function Workflow() {
   const removeApprover = async (approverId: number) => {
     setRemovingApprover(approverId);
     try {
-      const response = await fetch("/api/admin/ocr-approvers", {
+      const response = await authFetch("/api/admin/ocr-approvers", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: approverId }),
@@ -251,7 +252,7 @@ export default function Workflow() {
   const fetchAvailableUsers = async () => {
     setLoadingUsers(true);
     try {
-      const response = await fetch("/api/admin/users-production");
+      const response = await authFetch("/api/admin/users-production");
       const data = await response.json();
       if (data.users) {
         const activeUsers = data.users.filter((u: UserProduction) => u.isActive);
@@ -315,7 +316,7 @@ export default function Workflow() {
 
     setAddingUser(userProductionId);
     try {
-      const response = await fetch("/api/admin/ocr-user-assignments", {
+      const response = await authFetch("/api/admin/ocr-user-assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -349,7 +350,7 @@ export default function Workflow() {
     if (!confirm("ต้องการลบผู้ใช้นี้ออกจากแผนกหรือไม่?")) return;
 
     try {
-      const response = await fetch("/api/admin/ocr-user-assignments", {
+      const response = await authFetch("/api/admin/ocr-user-assignments", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: assignmentId }),
@@ -375,7 +376,7 @@ export default function Workflow() {
       setSyncing(true);
       setSyncResult(null);
 
-      const response = await fetch("/api/admin/ocr-codes", {
+      const response = await authFetch("/api/admin/ocr-codes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "sync" }),

@@ -24,11 +24,11 @@
    - **Action**: Start a program
    - **Program/script**: `node`
    - **Add arguments**: `scripts/daily-sync.js`
-   - **Start in**: `D:\VS\network\VS\PR_PO\my-t3-app`
+   - **Start in**: `D:\VS\network\VS\PR_PO\test-github-clone`
 
 **หรือสร้างด้วย PowerShell:**
 ```powershell
-$action = New-ScheduledTaskAction -Execute "node" -Argument "scripts/daily-sync.js" -WorkingDirectory "D:\VS\network\VS\PR_PO\my-t3-app"
+$action = New-ScheduledTaskAction -Execute "node" -Argument "scripts/daily-sync.js" -WorkingDirectory "D:\VS\network\VS\PR_PO\test-github-clone"
 $trigger = New-ScheduledTaskTrigger -Daily -At 1:00AM
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -TaskName "PR-PO Daily Full Sync" -Description "Daily full sync of PR-PO data from SAP to PostgreSQL"
@@ -42,7 +42,7 @@ Register-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -
 crontab -e
 
 # เพิ่มบรรทัดนี้ (ทำงานทุกวันตอนตี 1)
-0 1 * * * cd /path/to/my-t3-app && node scripts/daily-sync.js >> /var/log/pr-po-sync.log 2>&1
+0 1 * * * cd /path/to/test-github-clone && node scripts/daily-sync.js >> /var/log/pr-po-sync.log 2>&1
 ```
 
 ### 1.3 ทดสอบ Script
@@ -54,11 +54,11 @@ npm run sync:full
 
 # วิธีที่ 2: รันด้วย Node.js โดยตรง
 # Windows
-cd D:\VS\network\VS\PR_PO\my-t3-app
+cd D:\VS\network\VS\PR_PO\test-github-clone
 node scripts/daily-sync.js
 
 # Linux/Mac
-cd /path/to/my-t3-app
+cd /path/to/test-github-clone
 node scripts/daily-sync.js
 ```
 
@@ -260,7 +260,7 @@ tail -f /var/log/pr-po-sync.log
 
 2. **ตรวจสอบว่า script รันได้:**
    ```bash
-   cd D:\VS\network\VS\PR_PO\my-t3-app
+   cd D:\VS\network\VS\PR_PO\test-github-clone
    node scripts/daily-sync.js
    ```
 
@@ -282,7 +282,7 @@ tail -f /var/log/pr-po-sync.log
 
 3. **ตรวจสอบ working directory:**
    - ต้องตั้ง "Start in" เป็น path โปรเจค
-   - Example: `D:\VS\network\VS\PR_PO\my-t3-app`
+   - Example: `D:\VS\network\VS\PR_PO\test-github-clone`
 
 ---
 

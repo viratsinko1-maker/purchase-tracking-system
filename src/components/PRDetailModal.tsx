@@ -1,6 +1,8 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, Fragment, useMemo } from "react";
 import { api } from "~/utils/api";
 import { useAuth } from "~/hooks/useAuth";
+import { useMultipleActionPermissions } from "~/hooks/usePermission";
+import CanAccess, { NoPermissionModal } from "./CanAccess";
 import PODetailModal from "./PODetailModal";
 import WODetailModal from "./WODetailModal";
 
@@ -16,6 +18,35 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
   // ดึงข้อมูล user ที่ล็อคอินอยู่
   const { user } = useAuth();
 
+  // =====================================================
+  // PERMISSION CHECKS
+  // =====================================================
+  // รายการ action ที่ต้องตรวจสอบสิทธิ์
+  const actionKeys = useMemo(() => [
+    'pr_print.execute',      // พิมพ์ PR
+    'wo_detail.read',        // ดู Work Order
+    'po_detail.read',        // ดู PO
+    'receive_report.read',   // ดูการรับของ
+    'pr_qa.read',            // ดู Q&A section
+    'pr_qa.create',          // สร้างคำถามใหม่
+    'pr_qa.respond',         // ตอบคำถาม
+  ], []);
+
+  const { permissions, loading: permissionsLoading, isAdmin } = useMultipleActionPermissions(actionKeys);
+
+  // Helper function สำหรับเช็ค permission
+  const canDo = (action: string) => isAdmin || permissions[action];
+
+  // State สำหรับ NoPermission Modal
+  const [showNoPermissionModal, setShowNoPermissionModal] = useState(false);
+  const [noPermissionAction, setNoPermissionAction] = useState('');
+
+  // Helper function สำหรับแสดง modal เมื่อไม่มีสิทธิ์
+  const showNoPermission = (actionName: string) => {
+    setNoPermissionAction(actionName);
+    setShowNoPermissionModal(true);
+  };
+
   // State สำหรับเปิด PO Detail Modal
   const [selectedPoNo, setSelectedPoNo] = useState<number | null>(null);
 
@@ -29,6 +60,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
       setSelectedWoNo(null);
       setExpandedTrackingId(null);
       setShowApprovers(false);
+      setShowReceiveGoodModal(false);
     }
   }, [isOpen]);
 
@@ -61,6 +93,9 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
   // State สำหรับ Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  // State สำหรับ Receive Good Modal
+  const [showReceiveGoodModal, setShowReceiveGoodModal] = useState(false);
 
   // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
   const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
@@ -110,6 +145,12 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
   // ดึงข้อมูลการรับเอกสารและการอนุมัติ
   const { data: documentReceipt } = api.pr.getDocumentReceipt.useQuery(
     { prNo },
+    { enabled: isOpen && prNo > 0 }
+  );
+
+  // ดึงข้อมูลการรับของ (Receive Good)
+  const { data: receiveGoodData } = api.pr.getAllReceived.useQuery(
+    { search: String(prNo), limit: 100 },
     { enabled: isOpen && prNo > 0 }
   );
 
@@ -311,15 +352,17 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
               </h2>
               <div className="flex items-center gap-2">
                 {/* Print Button - Opens new page */}
-                <button
-                  onClick={() => window.open(`/print/pr/${prNo}`, '_blank')}
-                  className="rounded-full p-2 hover:bg-white/20 transition"
-                  title="พิมพ์"
-                >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                </button>
+                <CanAccess action="pr_print.execute" showDisabled disabledTooltip="คุณไม่มีสิทธิ์พิมพ์ PR">
+                  <button
+                    onClick={() => window.open(`/print/pr/${prNo}`, '_blank')}
+                    className="rounded-full p-2 hover:bg-white/20 transition"
+                    title="พิมพ์"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                  </button>
+                </CanAccess>
                 {/* Close Button */}
                 <button
                   onClick={onClose}
@@ -404,14 +447,24 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                           {prData.wo_numbers && prData.wo_numbers.length > 0 ? (
                             <span className="flex flex-wrap gap-1">
                               {prData.wo_numbers.map((wo: number) => (
-                                <button
-                                  key={wo}
-                                  onClick={() => setSelectedWoNo(wo)}
-                                  className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-teal-100 text-teal-800 hover:bg-teal-200 hover:text-teal-900 cursor-pointer transition"
-                                  title="คลิกเพื่อดูรายละเอียด WO"
-                                >
-                                  WO-{wo}
-                                </button>
+                                canDo('wo_detail.read') ? (
+                                  <button
+                                    key={wo}
+                                    onClick={() => setSelectedWoNo(wo)}
+                                    className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-teal-100 text-teal-800 hover:bg-teal-200 hover:text-teal-900 cursor-pointer transition"
+                                    title="คลิกเพื่อดูรายละเอียด WO"
+                                  >
+                                    WO-{wo}
+                                  </button>
+                                ) : (
+                                  <span
+                                    key={wo}
+                                    className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 cursor-not-allowed"
+                                    title="คุณไม่มีสิทธิ์ดู Work Order"
+                                  >
+                                    WO-{wo}
+                                  </span>
+                                )
                               ))}
                             </span>
                           ) : '-'}
@@ -437,16 +490,29 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                   <div className="rounded-lg bg-white p-6 shadow">
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-lg font-semibold text-gray-900">รายการสินค้า</h3>
-                      <button
-                        onClick={() => window.open(`/receive-good/report?prNo=${prNo}`, '_blank')}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition"
-                        title="ดูสถานะการรับของ"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                        </svg>
-                        ดูการรับของ
-                      </button>
+                      <CanAccess action="receive_report.read" showDisabled disabledTooltip="คุณไม่มีสิทธิ์ดูการรับของ">
+                        <button
+                          onClick={() => {
+                            if (!receiveGoodData || receiveGoodData.length === 0) {
+                              alert('ยังไม่มีการรับของสำหรับ PR นี้');
+                              return;
+                            }
+                            setShowReceiveGoodModal(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 transition"
+                          title="ดูสถานะการรับของ"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                          </svg>
+                          ดูการรับของ
+                          {receiveGoodData && receiveGoodData.length > 0 && (
+                            <span className="ml-1 rounded-full bg-teal-800 px-1.5 py-0.5 text-xs">
+                              {receiveGoodData.length}
+                            </span>
+                          )}
+                        </button>
+                      </CanAccess>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="min-w-full divide-y divide-gray-200">
@@ -525,17 +591,20 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                     </>
                                   )}
                                   <td className="whitespace-nowrap px-3 py-2 text-sm">
-                                    {user?.role === 'PR' ? (
-                                      <span className="font-semibold text-gray-400 cursor-not-allowed">
-                                        PO #{po.po_doc_num}
-                                      </span>
-                                    ) : (
+                                    {canDo('po_detail.read') ? (
                                       <button
                                         onClick={() => handleOpenPoModal(po.po_doc_num)}
                                         className="font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition"
                                       >
                                         PO #{po.po_doc_num}
                                       </button>
+                                    ) : (
+                                      <span
+                                        className="font-semibold text-gray-400 cursor-not-allowed"
+                                        title="คุณไม่มีสิทธิ์ดู PO"
+                                      >
+                                        PO #{po.po_doc_num}
+                                      </span>
                                     )}
                                     <div className="text-xs text-gray-500">
                                       {po.po_status === "O" ? "Open" : "Closed"}
@@ -817,7 +886,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                   )}
 
                   {/* การติดตาม PR - รวมฟอร์มบันทึกใหม่และประวัติเก่า */}
-                  {!hideTrackingButtons && (
+                  {!hideTrackingButtons && canDo('pr_qa.read') && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">📝 การติดตาม PR</h3>
                       <div className="space-y-4">
@@ -825,7 +894,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         <div className="rounded-lg bg-white shadow">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
                             {/* ซ้าย: ฟอร์มบันทึกการติดตาม */}
-                            {user?.role !== 'POPR' && (
+                            {canDo('pr_qa.create') && (
                               <div className="border-r border-gray-200 pr-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <h4 className="text-sm font-semibold text-blue-700">📋 การติดตาม</h4>
@@ -972,7 +1041,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             )}
 
                             {/* ขวา: พื้นที่ว่างหรือคำอธิบาย */}
-                            <div className={user?.role !== 'POPR' ? "pl-4" : ""}>
+                            <div className={canDo('pr_qa.create') ? "pl-4" : ""}>
                               <h4 className="text-sm font-semibold text-green-700 mb-3">💬 การตอบกลับ</h4>
                               <p className="text-sm text-gray-500 italic">
                                 เมื่อมีการติดตามแล้ว จะสามารถตอบกลับได้ที่นี่
@@ -1021,7 +1090,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                   <div className="pl-4">
                                     <div className="flex items-center justify-between mb-3">
                                       <h4 className="text-sm font-semibold text-green-700">💬 การตอบกลับ</h4>
-                                      {!hideTrackingButtons && user?.role !== 'PR' && user?.role !== 'POPR' && (
+                                      {!hideTrackingButtons && canDo('pr_qa.respond') && (
                                         <button
                                           onClick={() => toggleResponseForm(track.id)}
                                           className="rounded-md bg-green-600 px-3 py-1 text-xs text-white font-medium hover:bg-green-700 transition"
@@ -1048,8 +1117,8 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                       <p className="text-sm text-gray-500 italic mb-3">ยังไม่มีการตอบกลับ</p>
                                     )}
 
-                                    {/* ฟอร์มตอบกลับ - แสดงเมื่อกดปุ่ม (ซ่อนสำหรับ role PR และ POPR) */}
-                                    {expandedTrackingId === track.id && user?.role !== 'PR' && user?.role !== 'POPR' && (
+                                    {/* ฟอร์มตอบกลับ - แสดงเมื่อกดปุ่ม */}
+                                    {expandedTrackingId === track.id && canDo('pr_qa.respond') && (
                                       <form onSubmit={handleSubmitResponse(track.id)} className="mt-3 pt-3 border-t border-gray-200">
                                         <div className="space-y-3">
                                           <div>
@@ -1177,6 +1246,182 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
           </div>
         </div>
       )}
+
+      {/* Receive Good Modal */}
+      {showReceiveGoodModal && receiveGoodData && receiveGoodData.length > 0 && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-2"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowReceiveGoodModal(false);
+            }
+          }}
+        >
+          <div className="w-[98vw] max-h-[98vh] rounded-lg bg-white shadow-xl overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4 text-white flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">การรับของ PR #{prNo}</h2>
+                <p className="text-sm text-teal-100">รวม {receiveGoodData.length} รายการ</p>
+              </div>
+              <button
+                onClick={() => setShowReceiveGoodModal(false)}
+                className="rounded-full p-2 hover:bg-white/20 transition"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Summary */}
+              <div className="mb-4 flex flex-wrap gap-3">
+                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                  Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
+                </span>
+                <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+                  Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
+                </span>
+                <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
+                  Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
+                </span>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">รหัส</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">รายละเอียด</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">จำนวนรับ</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">สถานะ</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">วันที่รับของ (Warehouse)</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">วันที่ยืนยัน</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {receiveGoodData.map((record: any) => {
+                      // Calculate time difference
+                      const receivedAt = new Date(record.received_at);
+                      const confirmedAt = record.confirmed_at ? new Date(record.confirmed_at) : null;
+                      let timeDiff = '-';
+                      if (confirmedAt) {
+                        const diffMs = confirmedAt.getTime() - receivedAt.getTime();
+                        const diffMins = Math.floor(diffMs / (1000 * 60));
+                        const diffHours = Math.floor(diffMins / 60);
+                        const diffDays = Math.floor(diffHours / 24);
+                        if (diffDays > 0) {
+                          timeDiff = `${diffDays} วัน ${diffHours % 24} ชั่วโมง`;
+                        } else if (diffHours > 0) {
+                          timeDiff = `${diffHours} ชั่วโมง ${diffMins % 60} นาที`;
+                        } else {
+                          timeDiff = `${diffMins} นาที`;
+                        }
+                      }
+
+                      return (
+                        <tr
+                          key={record.id}
+                          className={
+                            record.confirm_status === 'confirmed' ? 'bg-green-50' :
+                            record.confirm_status === 'rejected' ? 'bg-red-50' : ''
+                          }
+                        >
+                          <td className="px-4 py-3 text-gray-900">{record.line_num}</td>
+                          <td className="px-4 py-3 text-gray-600">{record.item_code || '-'}</td>
+                          <td className="px-4 py-3 text-gray-900 max-w-md truncate" title={record.description || ''}>
+                            {record.description || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-900">
+                            {Number(record.received_qty).toLocaleString()}
+                            {record.unit_msr && <span className="text-gray-500 ml-1">{record.unit_msr}</span>}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {record.confirm_status === 'confirmed' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                                ✓ Confirmed
+                              </span>
+                            ) : record.confirm_status === 'rejected' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700" title={record.confirm_remarks || ''}>
+                                ✗ Rejected
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                                ⏳ Waiting
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                            <div>
+                              <div>{receivedAt.toLocaleString('th-TH', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}</div>
+                              {record.received_by && (
+                                <div className="text-gray-400">by {record.received_by}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                            {confirmedAt ? (
+                              <div>
+                                <div>{confirmedAt.toLocaleString('th-TH', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}</div>
+                                {record.confirmed_by && (
+                                  <div className="text-gray-400">by {record.confirmed_by}</div>
+                                )}
+                              </div>
+                            ) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {record.confirm_status !== 'waiting' && confirmedAt ? (
+                              <span className={`text-xs font-medium ${
+                                record.confirm_status === 'confirmed' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {timeDiff}
+                              </span>
+                            ) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t px-6 py-4 flex justify-end">
+              <button
+                onClick={() => setShowReceiveGoodModal(false)}
+                className="rounded-lg bg-gray-200 px-6 py-2 font-medium text-gray-700 hover:bg-gray-300 transition"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Permission Modal */}
+      <NoPermissionModal
+        isOpen={showNoPermissionModal}
+        onClose={() => setShowNoPermissionModal(false)}
+        actionName={noPermissionAction}
+      />
 
     </Fragment>
   );

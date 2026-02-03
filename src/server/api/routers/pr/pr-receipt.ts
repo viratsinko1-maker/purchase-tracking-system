@@ -3,11 +3,12 @@
  */
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
+import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
 
 export const prReceiptRouter = createTRPCRouter({
   // 🔹 ดึงข้อมูลการรับเอกสาร PR
-  getDocumentReceipt: publicProcedure
+  getDocumentReceipt: createTableProcedure('pr_approval', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const receipt = await ctx.db.pr_document_receipt.findUnique({
@@ -17,7 +18,7 @@ export const prReceiptRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึง preview ผู้อนุมัติ
-  getApproversPreview: publicProcedure
+  getApproversPreview: createTableProcedure('pr_approval', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const ocrCode2Result = await ctx.db.$queryRawUnsafe(`
@@ -94,7 +95,7 @@ export const prReceiptRouter = createTRPCRouter({
     }),
 
   // 🔹 บันทึกหรือแก้ไขการรับเอกสาร PR
-  saveDocumentReceipt: publicProcedure
+  saveDocumentReceipt: createTableProcedure('pr_approve', 'requester')
     .input(z.object({
       prNo: z.number(),
       receiptDate: z.string(),
@@ -202,6 +203,25 @@ export const prReceiptRouter = createTRPCRouter({
           },
         });
 
+        // Audit log: Update receipt
+        createAuditLog(ctx.db, {
+          userId: input.receivedByUserId,
+          userName: input.receivedBy,
+          action: AuditAction.UPDATE,
+          tableName: "pr_document_receipt",
+          recordId: String(input.prNo),
+          prNo: input.prNo,
+          oldValues: {
+            receiptDate: existing.receipt_date,
+            receivedBy: existing.received_by,
+          },
+          newValues: {
+            receiptDate: receiptDate,
+            receivedBy: input.receivedBy,
+          },
+          description: `แก้ไขการรับเอกสาร PR #${input.prNo}`,
+        }).catch(console.error);
+
         return {
           success: true,
           action: 'updated',
@@ -237,6 +257,22 @@ export const prReceiptRouter = createTRPCRouter({
           },
         });
 
+        // Audit log: Create receipt
+        createAuditLog(ctx.db, {
+          userId: input.receivedByUserId,
+          userName: input.receivedBy,
+          action: AuditAction.CREATE,
+          tableName: "pr_document_receipt",
+          recordId: String(input.prNo),
+          prNo: input.prNo,
+          newValues: {
+            receiptDate: receiptDate,
+            receivedBy: input.receivedBy,
+            ocrCode2: primaryOcrCode2,
+          },
+          description: `บันทึกการรับเอกสาร PR #${input.prNo}`,
+        }).catch(console.error);
+
         return {
           success: true,
           action: 'created',
@@ -247,7 +283,7 @@ export const prReceiptRouter = createTRPCRouter({
     }),
 
   // Get all received PRs
-  getAllReceivedPRs: publicProcedure
+  getAllReceivedPRs: createTableProcedure('pr_approval', 'read')
     .query(async ({ ctx }) => {
       const data = await ctx.db.$queryRawUnsafe(`
         SELECT

@@ -3,6 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
+import PageGuard from "~/components/PageGuard";
 
 interface GroupedRecord {
   pr_doc_num: number;
@@ -41,7 +42,7 @@ interface Attachment {
   uploaded_at: Date;
 }
 
-export default function ReceiveGoodList() {
+function ReceiveGoodListContent() {
   const router = useRouter();
   const { user } = useAuth();
 
@@ -776,5 +777,14 @@ export default function ReceiveGoodList() {
         </div>
       )}
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function ReceiveGoodList() {
+  return (
+    <PageGuard action="receive_good.read" pageName="รายการรับของ">
+      <ReceiveGoodListContent />
+    </PageGuard>
   );
 }

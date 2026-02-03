@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   createTRPCRouter,
-  publicProcedure,
+  createTableProcedure,
 } from "~/server/api/trpc";
 import { getSyncStatus, runFullAutoSync, runManualPRFullRefresh } from "~/server/auto-sync-scheduler";
 
@@ -17,7 +17,7 @@ export const syncRouter = createTRPCRouter({
    * - Block manual sync button ขณะที่ auto-sync ทำงาน
    * - Trigger auto-refresh เมื่อ sync เสร็จ
    */
-  getStatus: publicProcedure.query(async () => {
+  getStatus: createTableProcedure('admin_sync_pr', 'read').query(async () => {
     return getSyncStatus();
   }),
 
@@ -25,7 +25,7 @@ export const syncRouter = createTRPCRouter({
    * เรียกใช้ Manual Full Sync (สำหรับ Admin หรือเมื่อต้องการ sync ทันที)
    * จะตรวจสอบว่ามี auto-sync ทำงานอยู่หรือไม่ก่อน
    */
-  manualSync: publicProcedure.mutation(async () => {
+  manualSync: createTableProcedure('admin_sync', 'execute').mutation(async () => {
     return await runFullAutoSync();
   }),
 
@@ -34,7 +34,7 @@ export const syncRouter = createTRPCRouter({
    * ใช้เมื่อพบปัญหา data integrity (เช่น PR-PO link ไม่ตรงกัน)
    * ⚠️ WARNING: จะ TRUNCATE ข้อมูล PR ทั้งหมดแล้วดึงใหม่จาก SAP
    */
-  manualPRRefresh: publicProcedure.mutation(async () => {
+  manualPRRefresh: createTableProcedure('admin_sync', 'refresh').mutation(async () => {
     return await runManualPRFullRefresh();
   }),
 });

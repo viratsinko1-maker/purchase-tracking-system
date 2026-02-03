@@ -1,6 +1,7 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import bcrypt from "bcrypt";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
 
 const SALT_ROUNDS = 10;
 
@@ -53,6 +54,18 @@ export default async function handler(
           data: { password: hashedNewPassword },
         });
 
+        // Audit log: Password change for production user
+        createAuditLog(db, {
+          userId: userId,
+          userName: userProduction.name ?? userProduction.username ?? undefined,
+          action: AuditAction.UPDATE,
+          tableName: "user_production",
+          recordId: userId,
+          description: `เปลี่ยนรหัสผ่าน (Production): ${userProduction.name || userProduction.email}`,
+          metadata: { passwordChanged: true, source: "production" },
+          ipAddress: getIpFromRequest(req),
+        }).catch(console.error);
+
         return res.status(200).json({
           success: true,
           message: "เปลี่ยนรหัสผ่านสำเร็จ"
@@ -89,6 +102,18 @@ export default async function handler(
           data: { password: hashedNewPassword },
         });
 
+        // Audit log: Password change for production user (fallback)
+        createAuditLog(db, {
+          userId: userId,
+          userName: userProduction.name ?? userProduction.username ?? undefined,
+          action: AuditAction.UPDATE,
+          tableName: "user_production",
+          recordId: userId,
+          description: `เปลี่ยนรหัสผ่าน (Production): ${userProduction.name || userProduction.email}`,
+          metadata: { passwordChanged: true, source: "production" },
+          ipAddress: getIpFromRequest(req),
+        }).catch(console.error);
+
         return res.status(200).json({
           success: true,
           message: "เปลี่ยนรหัสผ่านสำเร็จ"
@@ -108,6 +133,18 @@ export default async function handler(
       where: { id: userId },
       data: { password: newPassword },
     });
+
+    // Audit log: Password change for local user
+    createAuditLog(db, {
+      userId: userId,
+      userName: user.name ?? user.username ?? undefined,
+      action: AuditAction.UPDATE,
+      tableName: "user",
+      recordId: userId,
+      description: `เปลี่ยนรหัสผ่าน: ${user.name || user.username}`,
+      metadata: { passwordChanged: true, source: "local" },
+      ipAddress: getIpFromRequest(req),
+    }).catch(console.error);
 
     return res.status(200).json({
       success: true,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, publicProcedure, createTableProcedure } from "~/server/api/trpc";
 import { getClientIp } from "~/server/utils/getClientIp";
 
 // Define activity action types
@@ -54,7 +54,7 @@ export const activityTrailRouter = createTRPCRouter({
   /**
    * Get activity trail logs with filters
    */
-  getActivities: publicProcedure
+  getActivities: createTableProcedure('admin_audit', 'read')
     .input(z.object({
       userId: z.string().optional(),
       action: ActivityAction.optional(),

@@ -2,6 +2,8 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import bcrypt from "bcrypt";
 import pg from "pg";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
 const { Client } = pg;
 
@@ -20,7 +22,7 @@ function getTmkClient() {
   });
 }
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -53,7 +55,11 @@ export default async function handler(
 
     // POST - Sync users from TMK_PDPJ01
     if (req.method === "POST") {
-      const { action } = req.body as { action?: string };
+      const { action, userId: adminUserId, userName: adminUserName } = req.body as {
+        action?: string;
+        userId?: string;
+        userName?: string;
+      };
 
       if (action === "sync") {
         const tmkClient = getTmkClient();
@@ -147,6 +153,22 @@ export default async function handler(
             }
           }
 
+          // Audit log: SYNC_DATA for user sync
+          createAuditLog(db, {
+            userId: adminUserId,
+            userName: adminUserName,
+            action: "SYNC_DATA",
+            tableName: "user_production",
+            description: `Sync ผู้ใช้จาก TMK: เพิ่มใหม่ ${inserted}, อัพเดต ${updated}, ปิดใช้งาน ${deactivated}`,
+            metadata: {
+              inserted,
+              updated,
+              deactivated,
+              totalFromTMK: tmkUsers.length,
+            },
+            ipAddress: getIpFromRequest(req),
+          }).catch(console.error);
+
           return res.status(200).json({
             success: true,
             message: `Sync สำเร็จ: เพิ่มใหม่ ${inserted}, อัพเดต ${updated}, ปิดใช้งาน ${deactivated}`,
@@ -202,10 +224,37 @@ export default async function handler(
         updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
       }
 
+      // Get old values for audit log
+      const oldUser = await db.user_production.findUnique({ where: { id } });
+
       const updatedUser = await db.user_production.update({
         where: { id },
         data: updateData,
       });
+
+      // Audit log: UPDATE user_production
+      createAuditLog(db, {
+        action: AuditAction.UPDATE,
+        tableName: "user_production",
+        recordId: id,
+        oldValues: oldUser ? {
+          username: oldUser.username,
+          name: oldUser.name,
+          role: oldUser.role,
+          isActive: oldUser.isActive,
+          telegramChatId: oldUser.telegramChatId,
+        } : undefined,
+        newValues: {
+          username: updatedUser.username,
+          name: updatedUser.name,
+          role: updatedUser.role,
+          isActive: updatedUser.isActive,
+          telegramChatId: updatedUser.telegramChatId,
+          passwordChanged: !!(password && password.trim() !== ""),
+        },
+        description: `แก้ไขผู้ใช้ Production: ${updatedUser.name || updatedUser.email}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({ user: updatedUser });
     }
@@ -218,9 +267,28 @@ export default async function handler(
         return res.status(400).json({ error: "ไม่พบ User ID" });
       }
 
+      // Get user data before delete for audit log
+      const userToDelete = await db.user_production.findUnique({ where: { id } });
+
       await db.user_production.delete({
         where: { id },
       });
+
+      // Audit log: DELETE user_production
+      createAuditLog(db, {
+        action: AuditAction.DELETE,
+        tableName: "user_production",
+        recordId: id,
+        oldValues: userToDelete ? {
+          email: userToDelete.email,
+          username: userToDelete.username,
+          name: userToDelete.name,
+          role: userToDelete.role,
+          isActive: userToDelete.isActive,
+        } : undefined,
+        description: `ลบผู้ใช้ Production: ${userToDelete?.name || userToDelete?.email || id}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({ message: "ลบผู้ใช้สำเร็จ" });
     }
@@ -235,3 +303,11 @@ export default async function handler(
     });
   }
 }
+
+// Apply permission middleware - protect admin user production management
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_users', action: 'read' },
+  POST: { tableName: 'admin_users', action: 'sync' },  // Sync action
+  PUT: { tableName: 'admin_users', action: 'update' },
+  DELETE: { tableName: 'admin_users', action: 'delete' },
+});

@@ -13,6 +13,8 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { db } from "~/server/db";
+import { checkTablePermission } from "~/lib/check-permission";
+import { isAdminRole, type PermissionAction } from "~/lib/permissions";
 
 /**
  * 1. CONTEXT
@@ -144,4 +146,152 @@ export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(() => {
     throw new TRPCError({ code: "UNAUTHORIZED" });
+  });
+
+// =====================================================
+// PERMISSION-BASED PROCEDURES
+// =====================================================
+
+/**
+ * Helper to get user from request headers
+ */
+interface UserInfo {
+  id: string;
+  role: string;
+}
+
+function getUserFromContext(ctx: { req?: CreateNextContextOptions["req"] }): UserInfo | null {
+  if (!ctx.req) return null;
+
+  const userId = ctx.req.headers['x-user-id'] as string | undefined;
+  const userRole = ctx.req.headers['x-user-role'] as string | undefined;
+
+  if (userId && userRole) {
+    return { id: userId, role: userRole };
+  }
+
+  return null;
+}
+
+/**
+ * Admin-only procedure
+ * ใช้สำหรับ endpoints ที่ต้องการสิทธิ์ Admin เท่านั้น
+ */
+export const adminProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(async ({ ctx, next }) => {
+    const user = getUserFromContext(ctx);
+
+    if (!user) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "No user credentials provided",
+      });
+    }
+
+    if (!isAdminRole(user.role)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Admin access required",
+      });
+    }
+
+    return next({
+      ctx: { ...ctx, user },
+    });
+  });
+
+/**
+ * Role-based procedure factory
+ * สร้าง procedure ที่ตรวจสอบ role ที่กำหนด
+ *
+ * Usage:
+ * ```typescript
+ * const managerProcedure = createRoleProcedure(['Admin', 'Manager']);
+ * ```
+ */
+export const createRoleProcedure = (allowedRoles: string[]) =>
+  t.procedure
+    .use(timingMiddleware)
+    .use(async ({ ctx, next }) => {
+      const user = getUserFromContext(ctx);
+
+      if (!user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "No user credentials provided",
+        });
+      }
+
+      if (!allowedRoles.includes(user.role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Access denied. Required roles: ${allowedRoles.join(', ')}`,
+        });
+      }
+
+      return next({
+        ctx: { ...ctx, user },
+      });
+    });
+
+/**
+ * Table permission procedure factory
+ * สร้าง procedure ที่ตรวจสอบสิทธิ์ต่อ table
+ *
+ * Usage:
+ * ```typescript
+ * const readUsersProcedure = createTableProcedure('admin_users', 'read');
+ * ```
+ */
+export const createTableProcedure = (tableName: string, action: PermissionAction) =>
+  t.procedure
+    .use(timingMiddleware)
+    .use(async ({ ctx, next }) => {
+      const user = getUserFromContext(ctx);
+
+      if (!user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "No user credentials provided",
+        });
+      }
+
+      const result = await checkTablePermission(ctx.db, {
+        tableName,
+        action,
+        userId: user.id,
+        userRole: user.role,
+      });
+
+      if (!result.allowed) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Permission denied for ${action} on ${tableName}. Reason: ${result.reason}`,
+        });
+      }
+
+      return next({
+        ctx: { ...ctx, user },
+      });
+    });
+
+/**
+ * Authenticated procedure (ไม่ check permission, แค่ต้อง login)
+ */
+export const authenticatedProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(async ({ ctx, next }) => {
+    const user = getUserFromContext(ctx);
+
+    if (!user) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Authentication required",
+      });
+    }
+
+    return next({
+      ctx: { ...ctx, user },
+    });
   });

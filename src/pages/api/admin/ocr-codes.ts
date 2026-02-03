@@ -1,6 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import sql from "mssql";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
 // SQL Server configuration (SAP B1)
 const sqlConfig = {
@@ -17,7 +19,7 @@ const sqlConfig = {
   requestTimeout: 30000,
 };
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -41,7 +43,11 @@ export default async function handler(
 
   // POST - Sync ข้อมูลจาก SAP OUDP
   if (req.method === "POST") {
-    const { action } = req.body as { action?: string };
+    const { action, userId: adminUserId, userName: adminUserName } = req.body as {
+      action?: string;
+      userId?: string;
+      userName?: string;
+    };
 
     if (action === "sync") {
       let pool: sql.ConnectionPool | null = null;
@@ -123,6 +129,17 @@ export default async function handler(
 
         console.log(`[OCR-SYNC] Sync completed: ${created} created, ${updated} updated, ${deactivated} not in SAP`);
 
+        // Audit log: Sync OCR codes
+        createAuditLog(db, {
+          userId: adminUserId,
+          userName: adminUserName,
+          action: AuditAction.SYNC_DATA,
+          tableName: "ocr_code_and_name",
+          description: `Sync OCR Codes จาก SAP: สร้างใหม่ ${created}, อัพเดท ${updated}`,
+          metadata: { created, updated, deactivated, totalFromSAP: sapRecords.length },
+          ipAddress: getIpFromRequest(req),
+        }).catch(console.error);
+
         return res.status(200).json({
           success: true,
           message: `Sync สำเร็จ: สร้างใหม่ ${created} รายการ, อัพเดท ${updated} รายการ`,
@@ -170,10 +187,30 @@ export default async function handler(
         updateData.costCenterApproverId = costCenterApproverId || null;
       }
 
+      // Get old values first
+      const oldOcr = await db.ocr_code_and_name.findUnique({ where: { id } });
+
       const updatedOcr = await db.ocr_code_and_name.update({
         where: { id },
         data: updateData,
       });
+
+      // Audit log: Update OCR approver
+      createAuditLog(db, {
+        action: AuditAction.UPDATE,
+        tableName: "ocr_code_and_name",
+        recordId: String(id),
+        oldValues: oldOcr ? {
+          lineApproverId: oldOcr.lineApproverId,
+          costCenterApproverId: oldOcr.costCenterApproverId,
+        } : undefined,
+        newValues: {
+          lineApproverId: updatedOcr.lineApproverId,
+          costCenterApproverId: updatedOcr.costCenterApproverId,
+        },
+        description: `อัพเดทผู้อนุมัติ OCR Code: ${updatedOcr.name}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({
         success: true,
@@ -191,3 +228,10 @@ export default async function handler(
 
   return res.status(405).json({ error: "Method not allowed" });
 }
+
+// Apply permission middleware - protect admin workflow/OCR codes management
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_workflow', action: 'read' },
+  POST: { tableName: 'admin_workflow', action: 'sync' },
+  PUT: { tableName: 'admin_workflow', action: 'update' },
+});

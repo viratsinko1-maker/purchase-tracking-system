@@ -3,6 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
+import PageGuard from "~/components/PageGuard";
 
 interface ReceiveBatch {
   batch_key: string | null;
@@ -38,16 +39,20 @@ interface PRGroup {
   batches: ReceiveBatch[];
 }
 
-export default function ReceiveGoodReport() {
+function ReceiveGoodReportContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [searchText, setSearchText] = useState("");
   const [selectedPR, setSelectedPR] = useState<PRGroup | null>(null);
+  const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
 
-  // Fetch all received records
+  // Get prNo from query param
+  const queryPrNo = router.query.prNo as string | undefined;
+
+  // Fetch all received records - ถ้ามี prNo ให้ใช้เป็น search filter
   const { data: records = [], isLoading } = api.pr.getAllReceived.useQuery(
-    { search: searchText || undefined, limit: 1000 },
-    { enabled: true }
+    { search: queryPrNo || searchText || undefined, limit: 1000 },
+    { enabled: router.isReady }
   );
 
   // Group records by PR number
@@ -135,14 +140,15 @@ export default function ReceiveGoodReport() {
 
   // Auto-open PR popup when prNo query param is present
   useEffect(() => {
-    if (router.isReady && router.query.prNo && prGroups.length > 0 && !selectedPR) {
-      const prNo = parseInt(router.query.prNo as string, 10);
+    if (router.isReady && queryPrNo && prGroups.length > 0 && !autoOpenAttempted) {
+      const prNo = parseInt(queryPrNo, 10);
       const targetPR = prGroups.find(pr => pr.pr_doc_num === prNo);
       if (targetPR) {
         setSelectedPR(targetPR);
       }
+      setAutoOpenAttempted(true);
     }
-  }, [router.isReady, router.query.prNo, prGroups, selectedPR]);
+  }, [router.isReady, queryPrNo, prGroups, autoOpenAttempted]);
 
   // Format Thai date time
   const formatThaiDateTime = (date: Date) => {
@@ -225,17 +231,36 @@ export default function ReceiveGoodReport() {
 
         {/* Search */}
         <div className="mb-6 rounded-lg bg-white p-4 shadow-sm">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search PR, requester, job name..."
-              className="w-full md:w-80 rounded-lg border border-gray-300 px-4 py-2 pl-10"
-            />
-            <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+          <div className="relative flex gap-2">
+            <div className="relative flex-1 md:flex-none md:w-80">
+              <input
+                type="text"
+                value={queryPrNo || searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  // Clear URL param when user types
+                  if (queryPrNo) {
+                    void router.replace('/receive-good/report', undefined, { shallow: true });
+                  }
+                }}
+                placeholder="Search PR, requester, job name..."
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 pl-10"
+              />
+              <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            {queryPrNo && (
+              <button
+                onClick={() => {
+                  setSearchText('');
+                  void router.replace('/receive-good/report', undefined, { shallow: true });
+                }}
+                className="rounded-lg bg-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-300"
+              >
+                Clear
+              </button>
+            )}
           </div>
           <p className="mt-2 text-sm text-gray-500">
             Total: <strong>{prGroups.length}</strong> PRs
@@ -312,7 +337,18 @@ export default function ReceiveGoodReport() {
 
       {/* PR Detail Modal */}
       {selectedPR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+          onClick={(e) => {
+            // Close when clicking backdrop
+            if (e.target === e.currentTarget) {
+              setSelectedPR(null);
+              if (queryPrNo) {
+                void router.replace('/receive-good/report', undefined, { shallow: true });
+              }
+            }
+          }}
+        >
           <div className="rounded-lg bg-white shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="p-6 border-b flex items-center justify-between">
@@ -324,7 +360,12 @@ export default function ReceiveGoodReport() {
                 )}
               </div>
               <button
-                onClick={() => setSelectedPR(null)}
+                onClick={() => {
+                  setSelectedPR(null);
+                  if (queryPrNo) {
+                    void router.replace('/receive-good/report', undefined, { shallow: true });
+                  }
+                }}
                 className="rounded-lg p-2 hover:bg-gray-100"
               >
                 <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -477,7 +518,12 @@ export default function ReceiveGoodReport() {
             {/* Modal Footer */}
             <div className="p-4 border-t flex justify-end">
               <button
-                onClick={() => setSelectedPR(null)}
+                onClick={() => {
+                  setSelectedPR(null);
+                  if (queryPrNo) {
+                    void router.replace('/receive-good/report', undefined, { shallow: true });
+                  }
+                }}
                 className="rounded-lg bg-gray-200 px-6 py-2 font-medium text-gray-700 hover:bg-gray-300"
               >
                 Close
@@ -487,5 +533,14 @@ export default function ReceiveGoodReport() {
         </div>
       )}
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function ReceiveGoodReport() {
+  return (
+    <PageGuard action="receive_report.read" pageName="รายงานการรับของ">
+      <ReceiveGoodReportContent />
+    </PageGuard>
   );
 }

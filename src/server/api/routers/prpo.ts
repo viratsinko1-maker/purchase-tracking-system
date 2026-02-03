@@ -2,7 +2,7 @@ import { z } from "zod";
 import sql from "mssql";
 import {
   createTRPCRouter,
-  publicProcedure,
+  createTableProcedure,
 } from "~/server/api/trpc";
 
 // SQL Server configuration
@@ -22,7 +22,7 @@ const sqlConfig = {
 
 export const prpoRouter = createTRPCRouter({
   // ดึงข้อมูล PR-PO ทั้งหมด
-  getAll: publicProcedure
+  getAll: createTableProcedure('pr_tracking', 'read')
     .input(
       z.object({
         search: z.string().optional(),
@@ -86,7 +86,7 @@ export const prpoRouter = createTRPCRouter({
     }),
 
   // ดึง PR เฉพาะตัว
-  getByPRNo: publicProcedure
+  getByPRNo: createTableProcedure('pr_detail', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.purchaseRequestPO.findMany({
@@ -96,7 +96,7 @@ export const prpoRouter = createTRPCRouter({
     }),
 
   // สถิติต่างๆ
-  getStats: publicProcedure.query(async ({ ctx }) => {
+  getStats: createTableProcedure('pr_tracking', 'read').query(async ({ ctx }) => {
     const [totalRecords, statuses, recentSync] = await Promise.all([
       ctx.db.purchaseRequestPO.count(),
       ctx.db.purchaseRequestPO.groupBy({
@@ -126,7 +126,7 @@ export const prpoRouter = createTRPCRouter({
   }),
 
   // Sync ข้อมูลจาก SQL Server
-  sync: publicProcedure.mutation(async ({ ctx }) => {
+  sync: createTableProcedure('pr_tracking', 'sync').mutation(async ({ ctx }) => {
     let sqlPool: sql.ConnectionPool | null = null;
 
     try {

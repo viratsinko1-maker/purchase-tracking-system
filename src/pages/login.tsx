@@ -1,25 +1,25 @@
-import { useState } from "react";
-import { useRouter } from "next/router";
+import { useState, useEffect } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 import { getComputerName } from "~/utils/getComputerName";
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [idleLogout, setIdleLogout] = useState(false);
 
-  // Registration state
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [registerForm, setRegisterForm] = useState({
-    username: "",
-    name: "",
-    password: "",
-  });
-  const [registerError, setRegisterError] = useState("");
-  const [registerLoading, setRegisterLoading] = useState(false);
-  const [registerSuccess, setRegisterSuccess] = useState(false);
+  // Check if user was logged out due to inactivity
+  useEffect(() => {
+    if (router.isReady && router.query.reason === "idle") {
+      setIdleLogout(true);
+      // Remove the query parameter from URL without refresh
+      void router.replace("/login", undefined, { shallow: true });
+    }
+  }, [router.isReady, router.query.reason, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,45 +64,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRegisterError("");
-    setRegisterLoading(true);
-
-    try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(registerForm),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setRegisterError(data.error || "เกิดข้อผิดพลาด");
-        setRegisterLoading(false);
-        return;
-      }
-
-      // Success
-      setRegisterSuccess(true);
-      setRegisterForm({ username: "", name: "", password: "" });
-
-      // Close modal after 3 seconds
-      setTimeout(() => {
-        setShowRegisterModal(false);
-        setRegisterSuccess(false);
-      }, 3000);
-
-    } catch (err) {
-      console.error("Registration error:", err);
-      setRegisterError("เกิดข้อผิดพลาดในการลงทะเบียน");
-      setRegisterLoading(false);
-    }
-  };
-
   return (
     <>
       <Head>
@@ -119,6 +80,17 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
+            {idleLogout && (
+              <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-sm text-yellow-800">
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span>ระบบออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานเป็นเวลานาน</span>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
                 {error}
@@ -130,15 +102,18 @@ export default function LoginPage() {
                 htmlFor="username"
                 className="block text-sm font-medium text-gray-700"
               >
-                User ID / Username
+                User ID / Email
               </label>
               <input
                 type="text"
                 id="username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setIdleLogout(false);
+                }}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                placeholder="กรอก User ID หรือ Username"
+                placeholder="กรอก User ID หรือ Email"
                 required
                 disabled={loading}
               />
@@ -151,16 +126,46 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                placeholder="กรอก Password"
-                required
-                disabled={loading}
-              />
+              <div className="relative mt-1">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setIdleLogout(false);
+                  }}
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                  placeholder="กรอก Password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end">
+              <a
+                href="/forgot-password"
+                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
+              >
+                ลืมรหัสผ่าน?
+              </a>
             </div>
 
             <button
@@ -170,134 +175,9 @@ export default function LoginPage() {
             >
               {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
             </button>
-
-            {/* Register Button */}
-            <button
-              type="button"
-              onClick={() => setShowRegisterModal(true)}
-              className="w-full text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
-            >
-              ขอเข้าใช้งาน
-            </button>
           </form>
         </div>
       </div>
-
-      {/* Registration Modal */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
-            <h2 className="mb-6 text-2xl font-bold text-gray-800">
-              ขอเข้าใช้งานระบบ
-            </h2>
-
-            {registerSuccess ? (
-              <div className="rounded-lg bg-green-50 p-6 text-center">
-                <div className="mb-4 text-5xl">✅</div>
-                <p className="text-lg font-semibold text-green-800">
-                  ลงทะเบียนสำเร็จ!
-                </p>
-                <p className="mt-2 text-sm text-green-600">
-                  กรุณารอผู้ดูแลระบบอนุมัติการใช้งาน
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleRegister} className="space-y-4">
-                {registerError && (
-                  <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
-                    {registerError}
-                  </div>
-                )}
-
-                <div>
-                  <label
-                    htmlFor="reg-username"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    id="reg-username"
-                    value={registerForm.username}
-                    onChange={(e) =>
-                      setRegisterForm({ ...registerForm, username: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                    placeholder="กรอก Username"
-                    required
-                    disabled={registerLoading}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="reg-name"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    ชื่อ-นามสกุล
-                  </label>
-                  <input
-                    type="text"
-                    id="reg-name"
-                    value={registerForm.name}
-                    onChange={(e) =>
-                      setRegisterForm({ ...registerForm, name: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                    placeholder="กรอกชื่อ-นามสกุล"
-                    required
-                    disabled={registerLoading}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="reg-password"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    id="reg-password"
-                    value={registerForm.password}
-                    onChange={(e) =>
-                      setRegisterForm({ ...registerForm, password: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                    placeholder="กรอก Password"
-                    required
-                    disabled={registerLoading}
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowRegisterModal(false);
-                      setRegisterForm({ username: "", name: "", password: "" });
-                      setRegisterError("");
-                    }}
-                    disabled={registerLoading}
-                    className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={registerLoading}
-                    className="flex-1 rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-                  >
-                    {registerLoading ? "กำลังส่งข้อมูล..." : "ลงทะเบียน"}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -1,11 +1,11 @@
 /**
  * PR Reports Router - getDelayedPRsGrouped, triggerDelayedNotification
  */
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 
 export const prReportsRouter = createTRPCRouter({
   // Get delayed PRs grouped by delay days (for Telegram notification)
-  getDelayedPRsGrouped: publicProcedure
+  getDelayedPRsGrouped: createTableProcedure('pr_tracking', 'read')
     .query(async ({ ctx }) => {
       const data = await ctx.db.$queryRawUnsafe(`
         SELECT
@@ -73,7 +73,7 @@ export const prReportsRouter = createTRPCRouter({
     }),
 
   // Manual trigger for delayed PR notification
-  triggerDelayedNotification: publicProcedure
+  triggerDelayedNotification: createTableProcedure('admin_sync', 'execute')
     .mutation(async ({ ctx }) => {
       try {
         const { notifyDelayedPRs } = await import('~/server/services/telegram');

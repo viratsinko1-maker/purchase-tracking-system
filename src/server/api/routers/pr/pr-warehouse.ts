@@ -2,11 +2,12 @@
  * PR Warehouse Router - Receive Goods Management
  */
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
+import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
 
 export const prWarehouseRouter = createTRPCRouter({
   // 🔹 บันทึกการรับของ (สามารถรับหลายรายการพร้อมกัน)
-  saveReceiveGoods: publicProcedure
+  saveReceiveGoods: createTableProcedure('receive_good', 'create')
     .input(z.object({
       prDocNum: z.number(),
       items: z.array(z.object({
@@ -72,6 +73,22 @@ export const prWarehouseRouter = createTRPCRouter({
         )
       );
 
+      // Audit log: Create receive goods
+      createAuditLog(ctx.db, {
+        userId: receivedByUserId,
+        userName: receivedBy,
+        action: AuditAction.CREATE,
+        tableName: "warehouse_receivegood",
+        recordId: batchKey || String(prDocNum),
+        prNo: prDocNum,
+        newValues: {
+          itemCount: results.length,
+          items: itemsToSave.map(i => ({ lineNum: i.lineNum, qty: i.receivedQty })),
+        },
+        description: `รับของ PR #${prDocNum} จำนวน ${results.length} รายการ`,
+        metadata: { batchKey },
+      }).catch(console.error);
+
       return {
         success: true,
         savedCount: results.length,
@@ -80,7 +97,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงข้อมูลการรับของทั้งหมดของ PR (สำหรับหน้า receive-good list)
-  getReceivedByPR: publicProcedure
+  getReceivedByPR: createTableProcedure('receive_good', 'read')
     .input(z.object({
       prDocNum: z.number(),
     }))
@@ -97,7 +114,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงจำนวนที่รับไปแล้วของแต่ละ line (สำหรับ form รับของ)
-  getReceivedQtyByLines: publicProcedure
+  getReceivedQtyByLines: createTableProcedure('receive_good', 'read')
     .input(z.object({
       prDocNum: z.number(),
     }))
@@ -126,7 +143,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงรายการรับของทั้งหมด (สำหรับหน้า /receive-good)
-  getAllReceived: publicProcedure
+  getAllReceived: createTableProcedure('receive_good', 'read')
     .input(z.object({
       search: z.string().optional(),
       limit: z.number().optional().default(50),
@@ -169,7 +186,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ลบการบันทึกรับของ (Admin only)
-  deleteReceived: publicProcedure
+  deleteReceived: createTableProcedure('receive_good', 'delete')
     .input(z.object({
       id: z.number(),
       deletedBy: z.string(),
@@ -191,6 +208,22 @@ export const prWarehouseRouter = createTRPCRouter({
         where: { id },
       });
 
+      // Audit log: Delete receive goods
+      createAuditLog(ctx.db, {
+        userName: deletedBy,
+        action: AuditAction.DELETE,
+        tableName: "warehouse_receivegood",
+        recordId: String(id),
+        prNo: record.pr_doc_num,
+        oldValues: {
+          lineNum: record.line_num,
+          itemCode: record.item_code,
+          description: record.description,
+          receivedQty: record.received_qty,
+        },
+        description: `ลบรายการรับของ PR #${record.pr_doc_num} Line ${record.line_num}`,
+      }).catch(console.error);
+
       return {
         success: true,
         message: `ลบรายการ PR #${record.pr_doc_num} Line ${record.line_num} สำเร็จ`,
@@ -199,7 +232,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ลบการบันทึกรับของหลายรายการ (Admin only)
-  deleteMultipleReceived: publicProcedure
+  deleteMultipleReceived: createTableProcedure('receive_good', 'delete')
     .input(z.object({
       ids: z.array(z.number()),
       deletedBy: z.string(),
@@ -213,6 +246,16 @@ export const prWarehouseRouter = createTRPCRouter({
         },
       });
 
+      // Audit log: Delete multiple receive goods
+      createAuditLog(ctx.db, {
+        userName: deletedBy,
+        action: AuditAction.DELETE,
+        tableName: "warehouse_receivegood",
+        oldValues: { deletedIds: ids },
+        description: `ลบรายการรับของหลายรายการ จำนวน ${result.count} รายการ`,
+        metadata: { deletedCount: result.count },
+      }).catch(console.error);
+
       return {
         success: true,
         deletedCount: result.count,
@@ -221,7 +264,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงไฟล์แนบตาม batch_key
-  getAttachmentsByBatch: publicProcedure
+  getAttachmentsByBatch: createTableProcedure('receive_good', 'read')
     .input(z.object({
       batchKey: z.string(),
     }))
@@ -235,7 +278,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงไฟล์แนบทั้งหมดของ PR
-  getAttachmentsByPR: publicProcedure
+  getAttachmentsByPR: createTableProcedure('receive_good', 'read')
     .input(z.object({
       prDocNum: z.number(),
     }))
@@ -249,7 +292,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ลบไฟล์แนบ
-  deleteAttachment: publicProcedure
+  deleteAttachment: createTableProcedure('receive_attachment', 'delete')
     .input(z.object({
       id: z.number(),
     }))
@@ -267,6 +310,19 @@ export const prWarehouseRouter = createTRPCRouter({
         where: { id: input.id },
       });
 
+      // Audit log: Delete attachment
+      createAuditLog(ctx.db, {
+        action: AuditAction.DELETE,
+        tableName: "warehouse_receive_attachment",
+        recordId: String(input.id),
+        prNo: attachment.pr_doc_num || undefined,
+        oldValues: {
+          fileName: attachment.file_name,
+          filePath: attachment.file_path,
+        },
+        description: `ลบไฟล์แนบ: ${attachment.file_name}`,
+      }).catch(console.error);
+
       // Note: Physical file deletion is handled separately if needed
 
       return {
@@ -276,7 +332,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงรายการรับของตาม batch_key (สำหรับหน้า confirm)
-  getReceivedByBatch: publicProcedure
+  getReceivedByBatch: createTableProcedure('receive_good', 'read')
     .input(z.object({
       batchKey: z.string(),
     }))
@@ -298,7 +354,7 @@ export const prWarehouseRouter = createTRPCRouter({
     }),
 
   // 🔹 อัพเดทสถานะ confirm สำหรับหลายรายการ
-  updateBatchConfirmStatus: publicProcedure
+  updateBatchConfirmStatus: createTableProcedure('receive_confirm', 'execute')
     .input(z.object({
       items: z.array(z.object({
         id: z.number(),
@@ -306,10 +362,23 @@ export const prWarehouseRouter = createTRPCRouter({
         confirm_remarks: z.string().optional(),
       })),
       confirmed_by: z.string(),
+      confirmed_by_user_id: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { items, confirmed_by } = input;
+      const { items, confirmed_by, confirmed_by_user_id } = input;
       const now = new Date();
+
+      // Get existing records first (for KPI calculation)
+      const existingRecords = await ctx.db.warehouse_receivegood.findMany({
+        where: { id: { in: items.map(i => i.id) } },
+        select: {
+          id: true,
+          pr_doc_num: true,
+          batch_key: true,
+          received_at: true,
+          confirm_status: true,
+        },
+      });
 
       // Update each item
       const updates = items.map((item) =>
@@ -329,6 +398,95 @@ export const prWarehouseRouter = createTRPCRouter({
 
       const confirmedCount = items.filter(i => i.confirm_status === 'confirmed').length;
       const rejectedCount = items.filter(i => i.confirm_status === 'rejected').length;
+
+      // 🔹 KPI Tracking: บันทึก receive confirm KPI metric
+      try {
+        // Only record KPI for items that are being confirmed or rejected (not waiting)
+        const itemsToTrack = items.filter(i => i.confirm_status !== 'waiting');
+
+        if (itemsToTrack.length > 0) {
+          // Get SLA config for receive confirm
+          const slaConfig = await ctx.db.kpi_sla_config.findFirst({
+            where: {
+              kpi_type: 'receive_confirm',
+              is_active: true,
+            },
+          });
+
+          const slaTargetMinutes = slaConfig?.target_minutes ?? null;
+
+          // Group by batch_key for KPI recording
+          const batchMap = new Map<string, {
+            prDocNum: number;
+            receivedAt: Date;
+            itemCount: number;
+            confirmStatus: string;
+          }>();
+
+          for (const item of itemsToTrack) {
+            const existingRecord = existingRecords.find(r => r.id === item.id);
+            if (!existingRecord) continue;
+
+            const batchKey = existingRecord.batch_key || `single-${existingRecord.id}`;
+
+            if (!batchMap.has(batchKey)) {
+              batchMap.set(batchKey, {
+                prDocNum: existingRecord.pr_doc_num,
+                receivedAt: existingRecord.received_at,
+                itemCount: 0,
+                confirmStatus: item.confirm_status,
+              });
+            }
+
+            const batch = batchMap.get(batchKey)!;
+            batch.itemCount++;
+            // If any item is rejected, mark batch as rejected
+            if (item.confirm_status === 'rejected') {
+              batch.confirmStatus = 'rejected';
+            }
+          }
+
+          // Insert KPI metric for each batch
+          for (const [batchKey, batch] of batchMap) {
+            const durationSeconds = Math.floor((now.getTime() - new Date(batch.receivedAt).getTime()) / 1000);
+            const durationMinutes = durationSeconds / 60;
+            const isOnTime = slaTargetMinutes !== null ? durationMinutes <= slaTargetMinutes : null;
+
+            await ctx.db.receive_confirm_kpi_metric.create({
+              data: {
+                pr_doc_num: batch.prDocNum,
+                batch_key: batchKey,
+                user_id: confirmed_by_user_id || 'unknown',
+                user_name: confirmed_by,
+                received_at: batch.receivedAt,
+                confirmed_at: now,
+                duration_seconds: durationSeconds,
+                duration_minutes: durationMinutes,
+                sla_target_minutes: slaTargetMinutes,
+                is_on_time: isOnTime,
+                confirm_status: batch.confirmStatus,
+                items_count: batch.itemCount,
+              },
+            });
+          }
+        }
+      } catch (kpiError) {
+        // Log error but don't fail the confirm operation
+        console.error('[KPI] Failed to record receive confirm KPI metric:', kpiError);
+      }
+
+      // Audit log: Update batch confirm status
+      createAuditLog(ctx.db, {
+        userName: confirmed_by,
+        action: AuditAction.UPDATE,
+        tableName: "warehouse_receivegood",
+        newValues: {
+          confirmedCount,
+          rejectedCount,
+          items: items.map(i => ({ id: i.id, status: i.confirm_status })),
+        },
+        description: `ยืนยันการรับของ: ${confirmedCount} รายการยืนยัน, ${rejectedCount} รายการปฏิเสธ`,
+      }).catch(console.error);
 
       return {
         success: true,

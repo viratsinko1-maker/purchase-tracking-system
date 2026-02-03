@@ -1,8 +1,10 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import { randomUUID } from "crypto";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -69,6 +71,22 @@ export default async function handler(
         },
       });
 
+      // Audit log: CREATE user
+      createAuditLog(db, {
+        action: AuditAction.CREATE,
+        tableName: "user",
+        recordId: newUser.id,
+        newValues: {
+          userId: newUser.userId,
+          username: newUser.username,
+          name: newUser.name,
+          role: newUser.role,
+          isActive: newUser.isActive,
+        },
+        description: `สร้างผู้ใช้ใหม่: ${newUser.username}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
+
       return res.status(201).json({ user: newUser });
     }
 
@@ -109,6 +127,9 @@ export default async function handler(
         }
       }
 
+      // Get old values for audit log
+      const oldUser = await db.user.findUnique({ where: { id } });
+
       const updatedUser = await db.user.update({
         where: { id },
         data: {
@@ -121,6 +142,30 @@ export default async function handler(
         },
       });
 
+      // Audit log: UPDATE user
+      createAuditLog(db, {
+        action: AuditAction.UPDATE,
+        tableName: "user",
+        recordId: id,
+        oldValues: oldUser ? {
+          userId: oldUser.userId,
+          username: oldUser.username,
+          name: oldUser.name,
+          role: oldUser.role,
+          isActive: oldUser.isActive,
+        } : undefined,
+        newValues: {
+          userId: updatedUser.userId,
+          username: updatedUser.username,
+          name: updatedUser.name,
+          role: updatedUser.role,
+          isActive: updatedUser.isActive,
+          passwordChanged: !!password,
+        },
+        description: `แก้ไขผู้ใช้: ${updatedUser.username}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
+
       return res.status(200).json({ user: updatedUser });
     }
 
@@ -132,9 +177,28 @@ export default async function handler(
         return res.status(400).json({ error: "ไม่พบ User ID" });
       }
 
+      // Get user data before delete for audit log
+      const userToDelete = await db.user.findUnique({ where: { id } });
+
       await db.user.delete({
         where: { id },
       });
+
+      // Audit log: DELETE user
+      createAuditLog(db, {
+        action: AuditAction.DELETE,
+        tableName: "user",
+        recordId: id,
+        oldValues: userToDelete ? {
+          userId: userToDelete.userId,
+          username: userToDelete.username,
+          name: userToDelete.name,
+          role: userToDelete.role,
+          isActive: userToDelete.isActive,
+        } : undefined,
+        description: `ลบผู้ใช้: ${userToDelete?.username || id}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({ message: "ลบผู้ใช้สำเร็จ" });
     }
@@ -146,3 +210,11 @@ export default async function handler(
     return res.status(500).json({ error: "เกิดข้อผิดพลาด" });
   }
 }
+
+// Apply permission middleware - protect admin user management
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_users', action: 'read' },
+  POST: { tableName: 'admin_users', action: 'create' },
+  PUT: { tableName: 'admin_users', action: 'update' },
+  DELETE: { tableName: 'admin_users', action: 'delete' },
+});

@@ -2,11 +2,11 @@
  * PR Overview Router - getAllSummary, getByPRNo, getStats, getPRAttachments, getAllQA
  */
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 
 export const prOverviewRouter = createTRPCRouter({
   // 🔹 ดึงสรุป PR ทั้งหมดจาก Materialized View
-  getAllSummary: publicProcedure
+  getAllSummary: createTableProcedure('pr_tracking', 'read')
     .input(
       z.object({
         search: z.string().optional(),
@@ -102,7 +102,10 @@ export const prOverviewRouter = createTRPCRouter({
               ORDER BY cnt DESC, first_line ASC
               LIMIT 1
             ) sub
-          ) AS primary_ocr_code2
+          ) AS primary_ocr_code2,
+          (
+            SELECT COUNT(*) FROM pr_wo_link WHERE pr_doc_num = s.doc_num
+          ) AS wo_count
         FROM mv_pr_summary s
         LEFT JOIN pr_document_receipt r ON s.doc_num = r.pr_doc_num
         LEFT JOIN pr_document_approval a ON s.doc_num = a.pr_doc_num
@@ -118,6 +121,7 @@ export const prOverviewRouter = createTRPCRouter({
         lines_with_po: row.lines_with_po ? Number(row.lines_with_po) : 0,
         pending_lines: row.pending_lines ? Number(row.pending_lines) : 0,
         total_po_quantity: row.total_po_quantity ? Number(row.total_po_quantity) : null,
+        wo_count: row.wo_count ? Number(row.wo_count) : 0,
       }));
 
       return {
@@ -128,7 +132,7 @@ export const prOverviewRouter = createTRPCRouter({
 
   // 🔹 ดึงรายละเอียด PR เฉพาะใบ
   // แก้ไข: ใช้ po_lines.base_ref แทน pr_po_link เพื่อให้ตรงกับวิธีที่ PO popup ใช้
-  getByPRNo: publicProcedure
+  getByPRNo: createTableProcedure('pr_detail', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       // ดึงข้อมูล PR master
@@ -204,25 +208,48 @@ export const prOverviewRouter = createTRPCRouter({
       const matchedPOKeys = new Set<string>();
 
       const linesWithPO = prLines.map((line) => {
-        // Match PO กับ PR line โดยใช้ item_code เป็นหลัก
-        // ถ้า item_code เหมือนกัน = จับคู่กัน
+        // Match PO กับ PR line โดยใช้ทั้ง item_code และ description ร่วมกัน
+        // เพื่อแก้ปัญหากรณีที่มี PR หลาย line ใช้ item_code เดียวกันแต่ต่าง description
         let matchingPOs = poLines.filter((po: any) => {
           const key = `${po.po_doc_num}-${po.po_line_num}`;
           // ถ้าถูก match ไปแล้ว ข้าม
           if (matchedPOKeys.has(key)) return false;
 
-          // Match โดยใช้ item_code
-          if (line.item_code && po.po_item_code) {
-            return line.item_code === po.po_item_code;
-          }
-
-          // Fallback: ถ้าไม่มี item_code ให้ match ด้วย description
-          if (line.description && po.po_description) {
-            return line.description === po.po_description;
+          // Priority 1: Match โดยใช้ทั้ง item_code และ description (exact match)
+          if (line.item_code && po.po_item_code && line.description && po.po_description) {
+            // Normalize description สำหรับเปรียบเทียบ (trim และ lowercase)
+            const prDesc = line.description.trim().toLowerCase();
+            const poDesc = po.po_description.trim().toLowerCase();
+            if (line.item_code === po.po_item_code && prDesc === poDesc) {
+              return true;
+            }
           }
 
           return false;
         });
+
+        // ถ้าไม่พบ exact match, ลอง match ด้วย item_code อย่างเดียว (แต่จำกัดแค่ 1 PO)
+        if (matchingPOs.length === 0) {
+          const fallbackPO = poLines.find((po: any) => {
+            const key = `${po.po_doc_num}-${po.po_line_num}`;
+            if (matchedPOKeys.has(key)) return false;
+
+            if (line.item_code && po.po_item_code) {
+              return line.item_code === po.po_item_code;
+            }
+            // Fallback: ถ้าไม่มี item_code ให้ match ด้วย description
+            if (line.description && po.po_description) {
+              const prDesc = line.description.trim().toLowerCase();
+              const poDesc = po.po_description.trim().toLowerCase();
+              return prDesc === poDesc;
+            }
+            return false;
+          });
+
+          if (fallbackPO) {
+            matchingPOs = [fallbackPO];
+          }
+        }
 
         // บันทึก PO ที่ถูก match แล้ว
         matchingPOs.forEach((po: any) => {
@@ -260,7 +287,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงสถิติต่างๆ
-  getStats: publicProcedure
+  getStats: createTableProcedure('pr_tracking', 'read')
     .input(
       z.object({
         search: z.string().optional(),
@@ -352,7 +379,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงไฟล์แนบของ PR
-  getPRAttachments: publicProcedure
+  getPRAttachments: createTableProcedure('pr_detail', 'read')
     .input(z.object({
       prNo: z.number(),
     }))
@@ -378,7 +405,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงข้อมูล PO Info
-  getPOInfo: publicProcedure
+  getPOInfo: createTableProcedure('po_detail', 'read')
     .input(z.object({
       poNo: z.number(),
     }))
@@ -390,7 +417,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงข้อมูล PO Info หลายตัว
-  getPOInfoBatch: publicProcedure
+  getPOInfoBatch: createTableProcedure('po_detail', 'read')
     .input(z.object({
       poNumbers: z.array(z.number()),
     }))
@@ -410,7 +437,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ค้นหาผู้เปิด PR สำหรับหน้า Receive Good (limit 5)
-  searchRequesters: publicProcedure
+  searchRequesters: createTableProcedure('pr_tracking', 'search')
     .input(z.object({
       search: z.string(),
     }))
@@ -438,7 +465,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ค้นหา PR สำหรับหน้า Receive Good (limit 5)
-  searchPRForReceive: publicProcedure
+  searchPRForReceive: createTableProcedure('pr_tracking', 'search')
     .input(z.object({
       search: z.string(),
       requester: z.string().optional(),
@@ -485,7 +512,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงรายละเอียด WO (จาก wo_summary)
-  getWODetail: publicProcedure
+  getWODetail: createTableProcedure('wo_detail', 'read')
     .input(z.object({ woNo: z.number() }))
     .query(async ({ ctx, input }) => {
       // ดึงทุก record ของ WO นี้ (อาจมีหลาย WA/WC)
@@ -637,7 +664,7 @@ export const prOverviewRouter = createTRPCRouter({
     }),
 
   // 🔹 ค้นหา PR จากชื่องาน สำหรับหน้า Receive Good (limit 5)
-  searchPRByJobName: publicProcedure
+  searchPRByJobName: createTableProcedure('pr_tracking', 'search')
     .input(z.object({
       search: z.string(),
       requester: z.string().optional(),

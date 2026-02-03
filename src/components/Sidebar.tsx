@@ -1,76 +1,88 @@
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 import { useSidebar } from "~/contexts/SidebarContext";
+import { useMenuVisibility } from "~/hooks/usePermission";
+import { isElevatedRole } from "~/lib/permissions";
+import type { PermissionAction } from "~/lib/permissions";
+
+interface MenuItem {
+  name: string;
+  path: string;
+  icon: string;
+  permission?: {
+    table: string;
+    action: PermissionAction;
+  };
+  adminOnly?: boolean;
+  restrictedFor?: string[];
+}
 
 export default function Sidebar() {
   const router = useRouter();
   const { user } = useAuth();
   const { isExpanded, toggleSidebar } = useSidebar();
 
-  const menuItems = [
+  // Define menu items with permission-based visibility
+  const menuItems: MenuItem[] = [
     {
       name: "PR Tracking",
       path: "/pr-tracking",
       icon: "📋",
+      permission: { table: "pr_tracking", action: "read" },
     },
     {
       name: "PR Q&A",
       path: "/pr-qa",
       icon: "💬",
+      permission: { table: "pr_qa", action: "read" },
     },
     {
       name: "PR Overview",
       path: "/pr-overview",
       icon: "📊",
+      permission: { table: "pr_tracking", action: "read" },
     },
     {
       name: "PR Approval",
       path: "/pr-approval",
       icon: "✅",
-      adminOnly: true, // แสดงเฉพาะ Approval และ Admin
+      permission: { table: "pr_approval", action: "read" },
+      // Note: pr_approval.read is set to true for all roles by default
     },
     {
       name: "PO Tracking",
       path: "/po-tracking",
       icon: "📦",
-      restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
+      permission: { table: "po_tracking", action: "read" },
     },
     {
       name: "Receive Good",
       path: "/receive-good",
       icon: "📥",
-      restrictedFor: ["PR"], // ซ่อนสำหรับ role PR
-    },
-    {
-      name: "Workflow",
-      path: "/workflow",
-      icon: "🔀",
+      permission: { table: "receive_good", action: "read" },
     },
     {
       name: "Help",
       path: "/pr-help",
       icon: "❓",
+      // No permission required for help page
     },
     {
-      name: "จัดการผู้ใช้",
+      name: "W Series",
+      path: "/w-series/wo",
+      icon: "🔧",
+      // No permission required - available for all users
+    },
+    {
+      name: "Admin",
       path: "/admin/users",
-      icon: "👥",
-      adminOnly: true,
+      icon: "⚙️",
+      adminOnly: true, // Only Admin and Approval roles
     },
   ];
 
-  // Filter menu items based on user role
-  const visibleMenuItems = menuItems.filter((item) => {
-    if (item.adminOnly) {
-      // Only show to Admin and Approval users
-      return user?.role === "Admin" || user?.role === "Approval";
-    }
-    if (item.restrictedFor && user?.role) {
-      // Hide if user role is in restricted list
-      return !item.restrictedFor.includes(user.role);
-    }
-    return true;
-  });
+  // Use permission-based menu visibility
+  const visibleMenuItems = useMenuVisibility(menuItems);
 
   return (
     <>

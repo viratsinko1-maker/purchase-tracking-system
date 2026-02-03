@@ -3,6 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
+import PageGuard from "~/components/PageGuard";
 
 interface ReceiveLineState {
   lineId: number;
@@ -23,7 +24,7 @@ interface SelectedFile {
   id: string; // unique id for UI
 }
 
-export default function ReceiveGoodNew() {
+function ReceiveGoodNewContent() {
   const router = useRouter();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -840,5 +841,14 @@ export default function ReceiveGoodNew() {
         </div>
       </div>
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function ReceiveGoodNew() {
+  return (
+    <PageGuard action="receive_good.create" pageName="บันทึกรับของ">
+      <ReceiveGoodNewContent />
+    </PageGuard>
   );
 }

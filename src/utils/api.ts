@@ -27,6 +27,27 @@ const getBaseUrl = () => {
   return `http://localhost:${process.env.PORT ?? 3000}`; // dev SSR should use localhost
 };
 
+/**
+ * Get user info from sessionStorage for tRPC headers
+ */
+const getUserHeaders = (): Record<string, string> => {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const userStr = sessionStorage.getItem("user");
+    if (userStr) {
+      const user = JSON.parse(userStr) as { id?: string; role?: string };
+      const headers: Record<string, string> = {};
+      if (user.id) headers["x-user-id"] = user.id;
+      if (user.role) headers["x-user-role"] = user.role;
+      return headers;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return {};
+};
+
 /** A set of type-safe react-query hooks for your tRPC API. */
 export const api = createTRPCNext<AppRouter>({
   config() {
@@ -50,6 +71,12 @@ export const api = createTRPCNext<AppRouter>({
            */
           transformer: superjson,
           url: `${getBaseUrl()}/api/trpc`,
+          /**
+           * Add user credentials to every request for permission checking
+           */
+          headers() {
+            return getUserHeaders();
+          },
         }),
       ],
     };

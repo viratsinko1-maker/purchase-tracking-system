@@ -131,7 +131,7 @@ export default function WODetailModal({ woNo, isOpen, onClose }: WODetailModalPr
             ) : !woData ? (
               <div className="text-center py-20 text-gray-600">
                 <p className="text-lg mb-2">ไม่พบข้อมูล WO</p>
-                <p className="text-sm text-gray-500">กรุณารอการ sync ข้อมูลจากระบบ SAP</p>
+                <p className="text-sm text-gray-500">เลขที่ระบุอาจไม่ใช่เลข WO (อาจเป็นเลข PR หรืออื่นๆ)</p>
               </div>
             ) : (
               <div className="space-y-6 text-sm">

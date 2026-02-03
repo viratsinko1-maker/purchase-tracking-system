@@ -1,6 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Head from "next/head";
 import { useAuth } from "~/hooks/useAuth";
+import { authFetch } from "~/lib/authFetch";
+import PageGuard from "~/components/PageGuard";
+import CanAccess from "~/components/CanAccess";
+import { useMultipleActionPermissions } from "~/hooks/usePermission";
 
 interface User {
   id: string;
@@ -28,11 +32,43 @@ interface UserProduction {
   updatedAt: string;
 }
 
+interface SystemRole {
+  id: number;
+  name: string;
+  code: string;
+  priority: number;
+  description: string | null;
+  isActive: boolean;
+}
+
 type TabType = "user" | "user_production";
 
-export default function AdminUsersPage() {
-  const { requireAdmin } = useAuth();
+// Helper function for role badge color
+const getRoleBadgeColor = (roleCode: string | null): string => {
+  switch (roleCode) {
+    case "Admin": return "bg-purple-100 text-purple-800";
+    case "Approval": return "bg-pink-100 text-pink-800";
+    case "Manager": return "bg-blue-100 text-blue-800";
+    case "POPR": return "bg-green-100 text-green-800";
+    case "Warehouse": return "bg-amber-100 text-amber-800";
+    case "PR": return "bg-gray-100 text-gray-800";
+    default: return "bg-indigo-100 text-indigo-800";
+  }
+};
+
+function AdminUsersContent() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("user");
+
+  // Permission checks สำหรับปุ่มต่างๆ
+  const actionKeys = useMemo(() => [
+    'admin_users.create',
+    'admin_users.update',
+    'admin_users.delete',
+    'admin_users.sync',
+  ], []);
+  const { permissions, isAdmin } = useMultipleActionPermissions(actionKeys);
+  const canDo = (action: string) => isAdmin || permissions[action];
 
   // User state
   const [users, setUsers] = useState<User[]>([]);
@@ -42,6 +78,9 @@ export default function AdminUsersPage() {
   const [usersProduction, setUsersProduction] = useState<UserProduction[]>([]);
   const [loadingUsersProduction, setLoadingUsersProduction] = useState(true);
   const [syncing, setSyncing] = useState(false);
+
+  // Roles state
+  const [roles, setRoles] = useState<SystemRole[]>([]);
 
   const [error, setError] = useState("");
 
@@ -63,7 +102,7 @@ export default function AdminUsersPage() {
   const loadUsers = async () => {
     try {
       setLoadingUsers(true);
-      const response = await fetch("/api/admin/users");
+      const response = await authFetch("/api/admin/users");
       const data = await response.json();
       if (response.ok) {
         const sortedUsers = [...data.users].sort((a: User, b: User) => {
@@ -87,7 +126,7 @@ export default function AdminUsersPage() {
   const loadUsersProduction = async () => {
     try {
       setLoadingUsersProduction(true);
-      const response = await fetch("/api/admin/users-production");
+      const response = await authFetch("/api/admin/users-production");
       const data = await response.json();
       if (response.ok) {
         const sortedUsers = [...data.users].sort((a: UserProduction, b: UserProduction) => {
@@ -107,6 +146,23 @@ export default function AdminUsersPage() {
     }
   };
 
+  // Load roles from system_role table
+  const loadRoles = async () => {
+    try {
+      const response = await authFetch("/api/admin/roles");
+      const data = await response.json();
+      if (response.ok) {
+        // Sort by priority and filter active only
+        const sortedRoles = [...data.roles]
+          .filter((r: SystemRole) => r.isActive)
+          .sort((a: SystemRole, b: SystemRole) => a.priority - b.priority);
+        setRoles(sortedRoles);
+      }
+    } catch (err) {
+      console.error("Load roles error:", err);
+    }
+  };
+
   // Sync users from TMK_PDPJ01
   const handleSyncProduction = async () => {
     if (!confirm("ต้องการ Sync ข้อมูลผู้ใช้จาก TMK_PDPJ01 ใช่หรือไม่?")) {
@@ -116,10 +172,14 @@ export default function AdminUsersPage() {
     try {
       setSyncing(true);
       setError("");
-      const response = await fetch("/api/admin/users-production", {
+      const response = await authFetch("/api/admin/users-production", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync" }),
+        body: JSON.stringify({
+          action: "sync",
+          userId: user?.id,
+          userName: user?.name ?? user?.username,
+        }),
       });
 
       const data = await response.json();
@@ -140,19 +200,17 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    requireAdmin();
     void loadUsers();
     void loadUsersProduction();
+    void loadRoles();
   }, []);
-
-  useEffect(() => {
-    requireAdmin();
-  }, [requireAdmin]);
 
   // Open modal for create (User tab only)
   const handleCreate = () => {
     setEditingUser(null);
-    setFormData({ userId: "", username: "", name: "", password: "", role: "PR", isActive: true, telegramChatId: "" });
+    // Use the last role (lowest priority) as default, or "PR" if no roles
+    const defaultRole = roles.length > 0 ? roles[roles.length - 1]?.code || "PR" : "PR";
+    setFormData({ userId: "", username: "", name: "", password: "", role: defaultRole, isActive: true, telegramChatId: "" });
     setIsModalOpen(true);
   };
 
@@ -196,7 +254,7 @@ export default function AdminUsersPage() {
     try {
       if (editingUserProduction) {
         // Update User Production
-        const response = await fetch("/api/admin/users-production", {
+        const response = await authFetch("/api/admin/users-production", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -255,7 +313,7 @@ export default function AdminUsersPage() {
     }
 
     try {
-      const response = await fetch("/api/admin/users", {
+      const response = await authFetch("/api/admin/users", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: user.id }),
@@ -281,7 +339,7 @@ export default function AdminUsersPage() {
     }
 
     try {
-      const response = await fetch("/api/admin/users-production", {
+      const response = await authFetch("/api/admin/users-production", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: user.id }),
@@ -309,30 +367,10 @@ export default function AdminUsersPage() {
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="mx-auto max-w-7xl">
           {/* Header */}
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-800">
               จัดการผู้ใช้งาน
             </h1>
-            <div className="flex gap-2">
-              <button
-                onClick={() => window.location.href = '/activity-trail'}
-                className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700"
-              >
-                Activity
-              </button>
-              <button
-                onClick={() => window.location.href = '/sync-history'}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
-              >
-                PR Sync
-              </button>
-              <button
-                onClick={() => window.location.href = '/po-sync-history'}
-                className="rounded-lg bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700"
-              >
-                PO Sync
-              </button>
-            </div>
           </div>
 
           {/* Tabs */}
@@ -378,12 +416,14 @@ export default function AdminUsersPage() {
           {activeTab === "user" && (
             <>
               <div className="mb-4 flex justify-end">
-                <button
-                  onClick={handleCreate}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
-                >
-                  + เพิ่มผู้ใช้ใหม่
-                </button>
+                <CanAccess action="admin_users.create" showDisabled disabledTooltip="คุณไม่มีสิทธิ์เพิ่มผู้ใช้">
+                  <button
+                    onClick={handleCreate}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+                  >
+                    + เพิ่มผู้ใช้ใหม่
+                  </button>
+                </CanAccess>
               </div>
 
               <div className="overflow-hidden rounded-lg bg-white shadow">
@@ -442,14 +482,7 @@ export default function AdminUsersPage() {
                             {user.password ? "••••••" : "-"}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                              user.role === "Admin" ? "bg-purple-100 text-purple-800" :
-                              user.role === "Approval" ? "bg-pink-100 text-pink-800" :
-                              user.role === "Manager" ? "bg-blue-100 text-blue-800" :
-                              user.role === "POPR" ? "bg-green-100 text-green-800" :
-                              user.role === "Warehouse" ? "bg-amber-100 text-amber-800" :
-                              "bg-gray-100 text-gray-800"
-                            }`}>
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
                               {user.role || "PR"}
                             </span>
                           </td>
@@ -461,18 +494,22 @@ export default function AdminUsersPage() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleEditUser(user)}
-                              className="mr-3 text-indigo-600 hover:text-indigo-900"
-                            >
-                              แก้ไข
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              ลบ
-                            </button>
+                            <CanAccess action="admin_users.update" fallback={<span className="mr-3 text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์แก้ไข">แก้ไข</span>}>
+                              <button
+                                onClick={() => handleEditUser(user)}
+                                className="mr-3 text-indigo-600 hover:text-indigo-900"
+                              >
+                                แก้ไข
+                              </button>
+                            </CanAccess>
+                            <CanAccess action="admin_users.delete" fallback={<span className="text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์ลบ">ลบ</span>}>
+                              <button
+                                onClick={() => handleDeleteUser(user)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                ลบ
+                              </button>
+                            </CanAccess>
                           </td>
                         </tr>
                       ))
@@ -490,17 +527,19 @@ export default function AdminUsersPage() {
                 <p className="text-sm text-gray-600">
                   ข้อมูลผู้ใช้จาก TMK_PDPJ01 - ใช้ Email เป็น Login และ Password เริ่มต้นคือ 1234
                 </p>
-                <button
-                  onClick={handleSyncProduction}
-                  disabled={syncing}
-                  className={`rounded-lg px-4 py-2 text-white ${
-                    syncing
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-orange-600 hover:bg-orange-700"
-                  }`}
-                >
-                  {syncing ? "กำลัง Sync..." : "Sync จาก TMK_PDPJ01"}
-                </button>
+                <CanAccess action="admin_users.sync" showDisabled disabledTooltip="คุณไม่มีสิทธิ์ Sync ผู้ใช้">
+                  <button
+                    onClick={handleSyncProduction}
+                    disabled={syncing}
+                    className={`rounded-lg px-4 py-2 text-white ${
+                      syncing
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-orange-600 hover:bg-orange-700"
+                    }`}
+                  >
+                    {syncing ? "กำลัง Sync..." : "Sync จาก TMK_PDPJ01"}
+                  </button>
+                </CanAccess>
               </div>
 
               <div className="overflow-hidden rounded-lg bg-white shadow">
@@ -559,14 +598,7 @@ export default function AdminUsersPage() {
                             {user.password ? "••••••" : "-"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                              user.role === "Admin" ? "bg-purple-100 text-purple-800" :
-                              user.role === "Approval" ? "bg-pink-100 text-pink-800" :
-                              user.role === "Manager" ? "bg-blue-100 text-blue-800" :
-                              user.role === "POPR" ? "bg-green-100 text-green-800" :
-                              user.role === "Warehouse" ? "bg-amber-100 text-amber-800" :
-                              "bg-gray-100 text-gray-800"
-                            }`}>
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
                               {user.role}
                             </span>
                           </td>
@@ -586,18 +618,22 @@ export default function AdminUsersPage() {
                               : "-"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleEditUserProduction(user)}
-                              className="mr-3 text-indigo-600 hover:text-indigo-900"
-                            >
-                              แก้ไข
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUserProduction(user)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              ลบ
-                            </button>
+                            <CanAccess action="admin_users.update" fallback={<span className="mr-3 text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์แก้ไข">แก้ไข</span>}>
+                              <button
+                                onClick={() => handleEditUserProduction(user)}
+                                className="mr-3 text-indigo-600 hover:text-indigo-900"
+                              >
+                                แก้ไข
+                              </button>
+                            </CanAccess>
+                            <CanAccess action="admin_users.delete" fallback={<span className="text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์ลบ">ลบ</span>}>
+                              <button
+                                onClick={() => handleDeleteUserProduction(user)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                ลบ
+                              </button>
+                            </CanAccess>
                           </td>
                         </tr>
                       ))
@@ -610,7 +646,7 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal - ไม่ต้องครอบด้วย CanAccess เพราะ form จะถูกเปิดได้ก็ต่อเมื่อกดปุ่มที่ถูกครอบแล้ว */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
@@ -716,13 +752,24 @@ export default function AdminUsersPage() {
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                   required
                 >
-                  <option value="Admin">Admin</option>
-                  <option value="Approval">Approval</option>
-                  <option value="Manager">Manager</option>
-                  <option value="POPR">POPR</option>
-                  <option value="Warehouse">Warehouse</option>
-                  <option value="PR">PR</option>
+                  {roles.length > 0 ? (
+                    roles.map((role) => (
+                      <option key={role.id} value={role.code}>
+                        {role.name} ({role.code})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Admin">Admin</option>
+                      <option value="PR">PR</option>
+                    </>
+                  )}
                 </select>
+                {roles.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    ยังไม่มี Role ในระบบ - กรุณาไปที่หน้า &quot;จัดการ Role&quot; เพื่อเพิ่ม Role
+                  </p>
+                )}
               </div>
 
               {editingUserProduction && (
@@ -780,5 +827,14 @@ export default function AdminUsersPage() {
         </div>
       )}
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function AdminUsersPage() {
+  return (
+    <PageGuard action="admin_users.read" pageName="จัดการผู้ใช้">
+      <AdminUsersContent />
+    </PageGuard>
   );
 }

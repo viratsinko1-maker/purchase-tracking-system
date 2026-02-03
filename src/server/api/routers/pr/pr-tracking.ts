@@ -2,13 +2,13 @@
  * PR Tracking Router - createTracking, getTrackingHistory, getLatestTrackings, responses
  */
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 import { notifyPRTracking, notifyPRTrackingResponse, sendTelegramMessageToUser } from "~/server/services/telegram";
 import { getClientIp } from "~/server/utils/getClientIp";
 
 export const prTrackingRouter = createTRPCRouter({
   // 🔹 สร้าง User Tracking Log ใหม่
-  createTracking: publicProcedure
+  createTracking: createTableProcedure('pr_qa', 'create')
     .input(z.object({
       prNo: z.number(),
       urgencyLevel: z.enum(['ด่วนที่สุด', 'ด่วน', 'ปกติ', 'ปิดแล้ว']),
@@ -79,7 +79,7 @@ export const prTrackingRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึงประวัติ Tracking ของ PR
-  getTrackingHistory: publicProcedure
+  getTrackingHistory: createTableProcedure('pr_qa', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const history = await ctx.db.user_tracking_log.findMany({
@@ -90,7 +90,7 @@ export const prTrackingRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึง Tracking ล่าสุดของแต่ละ PR พร้อมคำตอบล่าสุด
-  getLatestTrackings: publicProcedure
+  getLatestTrackings: createTableProcedure('pr_qa', 'read')
     .input(z.object({
       prNumbers: z.array(z.number()),
     }))
@@ -173,7 +173,7 @@ export const prTrackingRouter = createTRPCRouter({
     }),
 
   // 🔹 สร้าง Tracking Response
-  createTrackingResponse: publicProcedure
+  createTrackingResponse: createTableProcedure('pr_qa', 'respond')
     .input(z.object({
       trackingId: z.number(),
       prNo: z.number(),
@@ -397,7 +397,7 @@ ${input.responseNote || '-'}
     }),
 
   // 🔹 ดึงประวัติคำตอบการติดตาม
-  getTrackingResponses: publicProcedure
+  getTrackingResponses: createTableProcedure('pr_qa', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const responses = await ctx.db.tracking_response_log.findMany({
@@ -409,7 +409,7 @@ ${input.responseNote || '-'}
     }),
 
   // 🔹 ดึงข้อมูล Tracking พร้อม Responses
-  getTrackingWithResponses: publicProcedure
+  getTrackingWithResponses: createTableProcedure('pr_qa', 'read')
     .input(z.object({ prNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const trackings = await ctx.db.user_tracking_log.findMany({
@@ -425,7 +425,7 @@ ${input.responseNote || '-'}
     }),
 
   // 🔹 ดึง PR Numbers ตามระดับความเร่งด่วน
-  getPRsByUrgencyLevels: publicProcedure
+  getPRsByUrgencyLevels: createTableProcedure('pr_qa', 'read')
     .input(z.object({
       urgencyLevels: z.array(z.string()),
     }))
@@ -455,7 +455,7 @@ ${input.responseNote || '-'}
     }),
 
   // 🔹 ดึงข้อมูล Q&A ทั้งหมด
-  getAllQA: publicProcedure
+  getAllQA: createTableProcedure('pr_qa', 'read')
     .input(z.object({
       trackedBy: z.string().optional(),
       dateFrom: z.string().optional(),
@@ -550,7 +550,7 @@ ${input.responseNote || '-'}
     }),
 
   // 🔹 ดึง PR พร้อม Tracking ล่าสุด (12 เดือนย้อนหลัง)
-  getPRsWithTrackingsLast12Months: publicProcedure
+  getPRsWithTrackingsLast12Months: createTableProcedure('pr_qa', 'read')
     .query(async ({ ctx }) => {
       const date12MonthsAgo = new Date();
       date12MonthsAgo.setMonth(date12MonthsAgo.getMonth() - 12);

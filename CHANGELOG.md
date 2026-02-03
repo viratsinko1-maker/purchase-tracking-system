@@ -2,6 +2,159 @@
 
 All notable changes to the PR Tracking System will be documented in this file.
 
+## [v4.2] - 2026-02-03
+
+### 📊 Usage Analytics & Enhanced KPI Tracking
+
+**Major Update: ระบบสถิติการใช้งาน (Usage Analytics) และ KPI ส่วนตัว**
+
+### ✨ New Features
+
+#### Usage Analytics (`/admin/usage-analytics`)
+- **Session History Tracking**:
+  - บันทึกประวัติ login/logout ทุกครั้ง
+  - ระยะเวลาใช้งาน (duration) และประเภท logout (manual/timeout)
+- **5 Tabs**:
+  - ภาพรวม: Summary cards + Active sessions
+  - รายวัน: แต่ละวัน + คลิกดูว่าใครเข้าใช้บ้าง
+  - รายสัปดาห์: จันทร์-อาทิตย์ + คลิกดูรายคน
+  - รายเดือน: ม.ค., ก.พ., ... + คลิกดูรายคน
+  - รายคน: สถิติแต่ละคน + ประวัติ session
+
+#### Personal Usage Stats (`/my-kpi`)
+- **Usage Stats Section**:
+  - จำนวนครั้งเข้าใช้
+  - เวลาใช้งานรวม (ชั่วโมง)
+  - เฉลี่ยต่อครั้ง (นาที)
+  - วิธีออกจากระบบ (กดออก / หมดเวลา)
+  - ประวัติการเข้าใช้งานล่าสุด 10 รายการ
+
+### 🔧 Technical Changes
+
+#### New Database Table
+- `session_history`:
+  - `user_id`, `user_name`, `ip_address`, `computer_name`
+  - `session_start`, `session_end`
+  - `duration_seconds`, `duration_minutes`
+  - `logout_type` ("manual" | "timeout")
+
+#### New API Endpoints (tRPC)
+- `kpi.getUsageSummary` - Summary รวม
+- `kpi.getDailyUsageWithUsers` - รายวัน + รายคน
+- `kpi.getWeeklyUsageStats` - รายสัปดาห์
+- `kpi.getMonthlyUsageStats` - รายเดือน
+- `kpi.getUserUsageStats` - สถิติรายคน
+- `kpi.getUserSessionHistory` - ประวัติ session
+- `kpi.getMyUsageStats` - สถิติส่วนตัว
+
+#### New Permissions
+- `admin_usage.read` - ดู Usage Analytics (Admin)
+- `my_kpi.read` - ดู KPI + Usage ส่วนตัว (ทุก role)
+- `admin_kpi.read/update/delete` - จัดการ KPI Dashboard
+
+#### Files Modified
+- `src/pages/api/auth/logout.ts` - บันทึก session_history
+- `src/server/session-cleanup-scheduler.ts` - บันทึก session_history (timeout)
+- `src/server/api/routers/kpi.ts` - เพิ่ม Usage APIs
+- `src/pages/my-kpi.tsx` - เพิ่ม Usage Stats section
+- `src/pages/admin/usage-analytics.tsx` - หน้าใหม่
+- `src/components/AdminSidebar.tsx` - เพิ่มเมนู "สถิติการใช้งาน"
+
+---
+
+## [v4.0] - 2026-01-31
+
+### 🔐 PR Approval Workflow, Audit Trail & User Management
+
+**Major Update: ระบบอนุมัติ PR แบบครบวงจร พร้อมระบบ Audit Trail**
+
+### ✨ New Features
+
+#### PR Approval Workflow
+- **Multi-level Approval System**:
+  - Line Approver (หัวหน้างาน)
+  - Cost Center Approver (ผู้จัดการ)
+  - 3 สถานะ: Pending → Approved/Rejected
+- **Telegram Notifications**:
+  - แจ้งเตือนผู้อนุมัติเมื่อมี PR รอดำเนินการ
+  - รองรับ Template messages
+- **OCR Code Management**:
+  - จัดการ OCR Codes และ Approvers
+  - User-OCR Assignment
+
+#### Audit Trail System 🆕
+- **Comprehensive Logging**:
+  - บันทึกทุก CRUD operation (Create, Read, Update, Delete)
+  - บันทึก Login/Logout
+  - บันทึก PR Approval/Reject
+- **Fire-and-Forget Pattern**:
+  - ไม่กระทบ performance ของ operation หลัก
+  - Error handling แยกจากการทำงานหลัก
+- **Diff View**:
+  - แสดง old_values vs new_values
+  - ติดตามการเปลี่ยนแปลงทุกครั้ง
+
+#### User Management
+- **User Production Table**:
+  - Sync จากระบบ Production
+  - bcrypt password hashing
+- **Role System**:
+  - PR (ผู้เปิด PR)
+  - Manager (ผู้จัดการ)
+  - Approval (ผู้อนุมัติ)
+  - Admin (ผู้ดูแลระบบ)
+- **Admin Panel**:
+  - จัดการ Users, OCR Codes, Approvers
+  - Audit Trail viewer
+
+#### Warehouse Receive Goods
+- **รับของ/ยืนยันการรับ**:
+  - บันทึกการรับของแต่ละ PR Line
+  - Batch processing
+  - Upload attachments
+- **Confirm Status**:
+  - Waiting → Confirmed/Rejected
+  - Audit logging ทุกขั้นตอน
+
+### 🔧 Technical Changes
+
+#### New Files Created
+- `src/server/api/utils/auditLog.ts` - Audit log helper
+- `src/pages/admin/audit-trail.tsx` - Audit Trail viewer
+- `src/pages/api/admin/audit-trail.ts` - API endpoint
+- `src/server/api/routers/pr/pr-warehouse.ts` - Warehouse operations
+- `src/server/api/routers/pr/pr-approval.ts` - Approval workflow
+- `src/server/api/routers/pr/pr-receipt.ts` - Document receipt
+
+#### Database Schema Updates
+- Added `activity_trail` table with:
+  - `table_name`, `record_id`, `old_values`, `new_values`
+  - `admin_note`, indexes for performance
+- Added `warehouse_receivegood` table
+- Added `warehouse_receive_attachment` table
+- Added `pr_document_receipt` table
+- Added `pr_document_approval` table
+
+#### Security Enhancements
+- bcrypt password hashing for production users
+- IP address logging
+- Computer name tracking
+
+### 📊 Statistics
+
+- **New Admin Pages**: 5+
+- **Audit Actions**: 10+ types
+- **Files Updated**: 20+
+
+### 💡 Benefits
+
+1. **Traceability**: ติดตามทุกการเปลี่ยนแปลงได้
+2. **Accountability**: รู้ว่าใครทำอะไร เมื่อไหร่
+3. **Security**: bcrypt password, audit logging
+4. **Workflow**: PR approval ครบวงจร
+
+---
+
 ## [v3.0] - 2025-11-25
 
 ### 📚 Documentation Overhaul - Comprehensive README

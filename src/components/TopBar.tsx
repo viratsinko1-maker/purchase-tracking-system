@@ -1,18 +1,33 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
 import { useRouter } from "next/router";
+import Link from "next/link";
 
 export default function TopBar() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Query pending approvals count
   const { data: pendingCount = 0 } = api.pr.getMyPendingApprovalsCount.useQuery(
@@ -135,28 +150,83 @@ export default function TopBar() {
             )}
           </button>
 
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold">
-              ชื่อ: {user.name || user.username || user.userId || "User"}
-            </span>
-            <span className="text-sm bg-white/20 px-3 py-1 rounded-full">
-              Role: {user.role || "N/A"}
-            </span>
+          {/* User Menu Dropdown */}
+          <div className="relative" ref={userMenuRef}>
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
+            >
+              <span className="text-lg font-semibold">
+                {user.name || user.username || user.userId || "User"}
+              </span>
+              <svg
+                className={`h-4 w-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu */}
+            {isUserMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                <div className="py-1">
+                  {/* User Info Header */}
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <p className="text-sm font-medium text-gray-900">{user.name || user.username}</p>
+                    <p className="text-xs text-gray-500">Role: {user.role || "N/A"}</p>
+                  </div>
+
+                  {/* Menu Items */}
+                  <Link
+                    href="/my-kpi"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  >
+                    <svg className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    KPI ของฉัน
+                  </Link>
+
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      setIsModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    เปลี่ยนรหัสผ่าน
+                  </button>
+
+                  <div className="border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        void logout();
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      ออกจากระบบ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="rounded-md bg-white/20 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
-          >
-            เปลี่ยนรหัสผ่าน
-          </button>
-
-          <button
-            onClick={() => void logout()}
-            className="rounded-md bg-white/20 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
-          >
-            ออกจากระบบ
-          </button>
+          {/* Role Badge */}
+          <span className="text-sm bg-white/20 px-3 py-1 rounded-full">
+            Role: {user.role || "N/A"}
+          </span>
         </div>
       </div>
 

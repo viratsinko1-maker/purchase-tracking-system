@@ -3,12 +3,12 @@
  */
 import { z } from "zod";
 import sql from "mssql";
-import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 import { sqlConfig } from "./config";
 
 export const prSyncRouter = createTRPCRouter({
   // 🔹 Sync ข้อมูลจาก SAP (Incremental Sync + PO Check + Full Sync ทุกวันอาทิตย์ 17:00)
-  sync: publicProcedure
+  sync: createTableProcedure('pr_tracking', 'sync')
     .input(z.object({
       fullSync: z.boolean().optional(),
     }).optional())
@@ -467,7 +467,7 @@ export const prSyncRouter = createTRPCRouter({
     }),
 
   // 🔹 Refresh Materialized View
-  refreshView: publicProcedure.mutation(async ({ ctx }) => {
+  refreshView: createTableProcedure('pr_tracking', 'sync').mutation(async ({ ctx }) => {
     const result = await ctx.db.$queryRawUnsafe('SELECT quick_refresh_view()') as any[];
     return {
       success: true,
@@ -476,7 +476,7 @@ export const prSyncRouter = createTRPCRouter({
   }),
 
   // 🔹 ดึง Sync History
-  getSyncHistory: publicProcedure
+  getSyncHistory: createTableProcedure('admin_sync_pr', 'read')
     .input(z.object({
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
@@ -552,7 +552,7 @@ export const prSyncRouter = createTRPCRouter({
     }),
 
   // 🔹 ดึง changes ของ sync session
-  getSyncChanges: publicProcedure
+  getSyncChanges: createTableProcedure('admin_sync_pr', 'read')
     .input(z.object({
       syncLogId: z.number(),
     }))

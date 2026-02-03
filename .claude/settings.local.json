@@ -111,7 +111,19 @@
       "Bash(python:*)",
       "Bash(git stash:*)",
       "Bash(git pull:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(dir:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nVersion 5: Receive Good Confirmation System & Reporting\n\n- Add Confirm Good feature for warehouse items with Confirm/Waiting/Reject status\n- Create confirmation page \\(/receive-good/confirm/[batchKey]\\) with status buttons\n- Implement item locking after confirmation \\(no further changes allowed\\)\n- Add rejection remarks requirement for rejected items\n- Display confirm status summary \\(confirmed/rejected/waiting counts\\)\n- Color-code cards based on confirmation status \\(green/red/default\\)\n- Add Time column showing duration between receive and confirm\n- Allow admin to delete individual items \\(not just entire groups\\)\n- Add Report page showing PR cards with receiving summary\n- Create pr-warehouse.ts router for warehouse-related API endpoints\n- Update schema with confirm_status, confirm_remarks, confirmed_at, confirmed_by fields\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd PR Print, Work Order Modal, Attachment APIs & Sync Scripts\n\nFeatures:\n- Add PR Print page with printable view \\(/print/pr/[prNo]\\)\n- Add PRPrintModal and PRPrintView components for printing\n- Add WODetailModal for Work Order details display\n- Add attachment upload and serve APIs for receive attachments\n- Add TMK logo to public assets\n\nImprovements:\n- Update AuthGuard with additional role checks\n- Enhance PRDetailModal with more details\n- Update Sidebar navigation\n- Improve pr-approval and pr-overview routers\n- Add prProjectSync service for project synchronization\n- Update workflow page\n- Update admin users page\n- Enhance attachment-sync and auto-sync schedulers\n- Add sync scripts for WO data \\(pr-wo-link, wo-gi-detail, wo-po-detail, wo-summary\\)\n- Update global styles\n\nCleanup:\n- Remove deprecated w-series page and related files\n- Remove wSeries router and w-series-scheduler\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git reset:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix TypeScript errors and add Receive Good button to PR popup\n\nFixes:\n- Fix Prisma model name: oCR_codeandName -> ocr_code_and_name\n- Add missing updatedAt field to create calls \\(ocr_approver, ocr_code_and_name, ocr_user_assignment, user_production, purchaseRequestPO\\)\n- Add missing id field to User create calls\n- Fix type error in pr-overview.ts \\(Decimal to number conversion\\)\n- Fix relation name in pr-tracking.ts \\(user_tracking -> user_tracking_log\\)\n\nFeatures:\n- Add \"ดูการรับของ\" button to PRDetailModal \\(links to receive-good filtered by PR\\)\n- Add URL search parameter support to receive-good page\n- Add confirm time and time difference columns to receive-good report popup\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(del \"d:\\\\VS\\\\network\\\\VS\\\\PR_PO\\\\test-github-clone\\\\temp-check-po-match.mjs\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix PO-PR line matching: use item_code instead of line_num\n\nPreviously matched PO lines to PR lines by po_line_num = pr_line_num,\nwhich was incorrect. PO line_num is the line number within the PO\ndocument, not a reference to the PR line.\n\nNow matches by item_code \\(with description fallback\\), which correctly\nlinks PO items to their source PR items.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(kill:*)",
+      "Bash(ls:*)",
+      "Bash(npx prisma validate:*)",
+      "Bash(del \"d:\\\\VS\\\\network\\\\VS\\\\PR_PO\\\\test-github-clone\\\\temp-check-permissions.mjs\")"
     ],
     "deny": [],
     "ask": []

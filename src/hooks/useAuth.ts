@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import { getComputerName } from "~/utils/getComputerName";
+import { isAdminRole, isElevatedRole } from "~/lib/permissions";
 
 export interface User {
   id: string;
@@ -32,7 +33,7 @@ export function useAuth() {
     setLoading(false);
   }, []);
 
-  const logout = async () => {
+  const logout = async (reason?: 'manual' | 'auto_logout_idle') => {
     try {
       const computerName = getComputerName();
 
@@ -46,6 +47,7 @@ export function useAuth() {
           userId: user?.id,
           userName: user?.name ?? user?.username ?? undefined,
           computerName,
+          reason: reason ?? 'manual',
         }),
       });
     } catch (error) {
@@ -56,7 +58,8 @@ export function useAuth() {
     setUser(null);
 
     // Force full page reload to clear state
-    window.location.href = "/login";
+    const redirectUrl = reason === 'auto_logout_idle' ? "/login?reason=idle" : "/login";
+    window.location.href = redirectUrl;
   };
 
   const requireAuth = () => {
@@ -65,15 +68,15 @@ export function useAuth() {
     }
   };
 
-  const requireAdmin = () => {
+  const requireAdmin = useCallback(() => {
     if (!loading && !user) {
       void router.push("/login");
-    } else if (!loading && user && user.role !== "Admin" && user.role !== "Approval") {
+    } else if (!loading && user && !isElevatedRole(user.role)) {
       // Not admin or approval - show error and redirect
       alert("⚠️ คุณไม่มีสิทธิ์เข้าถึงหน้านี้\n\nโปรดติดต่อผู้ดูแลระบบ");
       void router.push("/pr-tracking");
     }
-  };
+  }, [loading, user, router]);
 
   const requireRole = (allowedRoles: string[]) => {
     if (!loading && !user) {
@@ -93,6 +96,7 @@ export function useAuth() {
     requireAdmin,
     requireRole,
     isAuthenticated: !!user,
-    isAdmin: user?.role === "Admin" || user?.role === "Approval",
+    isAdmin: isElevatedRole(user?.role),          // Admin or Approval
+    isSystemAdmin: isAdminRole(user?.role),        // Only Admin
   };
 }

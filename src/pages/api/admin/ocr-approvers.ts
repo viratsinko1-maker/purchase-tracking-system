@@ -1,5 +1,7 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
 interface Approver {
   id: number;
@@ -20,7 +22,7 @@ interface Approver {
   };
 }
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -221,6 +223,24 @@ export default async function handler(
 
       const typeLabel = approverType === "line" ? "ผู้อนุมัติตามสายงาน" : "ผู้อนุมัติตาม Cost Center";
 
+      // Audit log: Create OCR approver
+      createAuditLog(db, {
+        userName: createdBy,
+        action: AuditAction.CREATE,
+        tableName: "ocr_approver",
+        recordId: String(approver.id),
+        newValues: {
+          ocrCodeId,
+          ocrCodeName: ocrCode.name,
+          userProductionId,
+          userName: user.username || user.email,
+          approverType,
+          priority: finalPriority,
+        },
+        description: `เพิ่ม${typeLabel}: ${user.username || user.email} → OCR ${ocrCode.name}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
+
       return res.status(201).json({
         success: true,
         data: approver,
@@ -241,10 +261,23 @@ export default async function handler(
         });
       }
 
+      const oldApprover = await db.ocr_approver.findUnique({ where: { id } });
+
       const updatedApprover = await db.ocr_approver.update({
         where: { id },
         data: { priority },
       });
+
+      // Audit log: Update OCR approver priority
+      createAuditLog(db, {
+        action: AuditAction.UPDATE,
+        tableName: "ocr_approver",
+        recordId: String(id),
+        oldValues: { priority: oldApprover?.priority },
+        newValues: { priority },
+        description: `อัพเดทลำดับความสำคัญผู้อนุมัติ: ${oldApprover?.priority} → ${priority}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({
         success: true,
@@ -262,9 +295,27 @@ export default async function handler(
         });
       }
 
+      // Get approver before delete for audit log
+      const approverToDelete = await db.ocr_approver.findUnique({ where: { id } });
+
       await db.ocr_approver.delete({
         where: { id },
       });
+
+      // Audit log: Delete OCR approver
+      createAuditLog(db, {
+        action: AuditAction.DELETE,
+        tableName: "ocr_approver",
+        recordId: String(id),
+        oldValues: approverToDelete ? {
+          ocrCodeId: approverToDelete.ocrCodeId,
+          userProductionId: approverToDelete.userProductionId,
+          approverType: approverToDelete.approverType,
+          priority: approverToDelete.priority,
+        } : undefined,
+        description: `ลบผู้อนุมัติ: ${approverToDelete?.approverType === 'line' ? 'ตามสายงาน' : 'ตาม Cost Center'}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({
         success: true,
@@ -282,3 +333,12 @@ export default async function handler(
     });
   }
 }
+
+// Apply permission middleware - protect admin OCR approvers management
+// Uses admin_approver_line for all operations since both line and cost_center use same permission
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_workflow', action: 'read' },
+  POST: { tableName: 'admin_approver_line', action: 'update' },
+  PUT: { tableName: 'admin_approver_line', action: 'update' },
+  DELETE: { tableName: 'admin_approver_line', action: 'update' },
+});

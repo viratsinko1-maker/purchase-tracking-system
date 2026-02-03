@@ -1,7 +1,9 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
+import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
+import { withMethodPermissions } from "~/server/api/middleware/withPermission";
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
@@ -172,6 +174,23 @@ export default async function handler(
         },
       });
 
+      // Audit log: Create OCR user assignment
+      createAuditLog(db, {
+        userName: createdBy,
+        action: AuditAction.CREATE,
+        tableName: "ocr_user_assignment",
+        recordId: String(assignment.id),
+        newValues: {
+          ocrCodeId,
+          ocrCodeName: ocrCode.remarks || ocrCode.name,
+          userProductionId,
+          userName: user.username || user.email,
+          role: role || "member",
+        },
+        description: `เพิ่มผู้ใช้ ${user.username || user.email} เข้าแผนก ${ocrCode.remarks || ocrCode.name}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
+
       return res.status(201).json({
         success: true,
         data: assignment,
@@ -192,10 +211,23 @@ export default async function handler(
         });
       }
 
+      const oldAssignment = await db.ocr_user_assignment.findUnique({ where: { id } });
+
       const updatedAssignment = await db.ocr_user_assignment.update({
         where: { id },
         data: { role },
       });
+
+      // Audit log: Update OCR user assignment role
+      createAuditLog(db, {
+        action: AuditAction.UPDATE,
+        tableName: "ocr_user_assignment",
+        recordId: String(id),
+        oldValues: { role: oldAssignment?.role },
+        newValues: { role },
+        description: `อัพเดท role: ${oldAssignment?.role} → ${role}`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({
         success: true,
@@ -213,9 +245,26 @@ export default async function handler(
         });
       }
 
+      // Get assignment before delete for audit log
+      const assignmentToDelete = await db.ocr_user_assignment.findUnique({ where: { id } });
+
       await db.ocr_user_assignment.delete({
         where: { id },
       });
+
+      // Audit log: Delete OCR user assignment
+      createAuditLog(db, {
+        action: AuditAction.DELETE,
+        tableName: "ocr_user_assignment",
+        recordId: String(id),
+        oldValues: assignmentToDelete ? {
+          ocrCodeId: assignmentToDelete.ocrCodeId,
+          userProductionId: assignmentToDelete.userProductionId,
+          role: assignmentToDelete.role,
+        } : undefined,
+        description: `ลบผู้ใช้ออกจากแผนก`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
 
       return res.status(200).json({
         success: true,
@@ -233,3 +282,11 @@ export default async function handler(
     });
   }
 }
+
+// Apply permission middleware - protect admin OCR user assignments (member management)
+export default withMethodPermissions(handler, {
+  GET: { tableName: 'admin_workflow', action: 'read' },
+  POST: { tableName: 'admin_ocr_member', action: 'update' },
+  PUT: { tableName: 'admin_ocr_member', action: 'update' },
+  DELETE: { tableName: 'admin_ocr_member', action: 'update' },
+});

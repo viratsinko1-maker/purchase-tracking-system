@@ -6,13 +6,15 @@ import PRDetailModal from "~/components/PRDetailModal";
 import PRDocumentReceiptModal from "~/components/PRDocumentReceiptModal";
 import { useAuth } from "~/hooks/useAuth";
 import { PRCard, SyncModals } from "~/components/pr-tracking";
+import PageGuard from "~/components/PageGuard";
+import { authFetch } from "~/lib/authFetch";
 
 // Import shared utils
 import { getDefaultDateRange } from "~/utils/dateUtils";
 import { getUrgencyStyle } from "~/utils/urgencyStyles";
 import { useSyncStatus } from "~/hooks/useSyncStatus";
 
-export default function PRTracking() {
+function PRTrackingContent() {
   const router = useRouter();
   const { user } = useAuth();
   const defaultDates = useMemo(() => getDefaultDateRange(), []);
@@ -24,9 +26,15 @@ export default function PRTracking() {
   const [dateFrom, setDateFrom] = useState(defaultDates.from);
   const [dateTo, setDateTo] = useState(defaultDates.to);
 
+  // Multi-select filters สำหรับ หน่วยงาน และ แผนก (OCR Code)
+  const [departmentFilter, setDepartmentFilter] = useState<string[]>([]); // หน่วยงาน (department_name)
+  const [ocrCodeFilter, setOcrCodeFilter] = useState<string[]>([]); // แผนก (ocr_code2)
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
+  const [showOcrCodeDropdown, setShowOcrCodeDropdown] = useState(false);
+
   // แยก search filters - แถวที่ 3
   const [searchRequester, setSearchRequester] = useState(""); // ชื่อผู้เปิด
-  const [searchDepartment, setSearchDepartment] = useState(""); // หน่วยงาน
+  const [searchDepartment, setSearchDepartment] = useState(""); // หน่วยงาน (text search)
   const [searchProject, setSearchProject] = useState(""); // ชื่อโครงการ
   const [searchPRNo, setSearchPRNo] = useState(""); // เลข PR (partial match)
   const [searchTracking, setSearchTracking] = useState(""); // การติดตาม
@@ -57,6 +65,10 @@ export default function PRTracking() {
   });
   const [showAnswerStatusDropdown, setShowAnswerStatusDropdown] = useState(false);
 
+  // State สำหรับ filter WO
+  const [woFilter, setWoFilter] = useState<string>(""); // "", "has_wo", "no_wo"
+  const [showWoDropdown, setShowWoDropdown] = useState(false);
+
   // Modal state
   const [selectedPRNo, setSelectedPRNo] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -69,14 +81,17 @@ export default function PRTracking() {
   // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
   const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
 
-  // Fetch OCR codes for tooltip
+  // Fetch OCR codes for tooltip (ocr_code -> ชื่อแผนก mapping)
   useEffect(() => {
+    if (!user) return; // รอให้ login ก่อน
+
     const fetchOcrCodes = async () => {
       try {
-        const response = await fetch("/api/admin/ocr-codes");
+        const response = await authFetch("/api/admin/ocr-codes");
         const data = await response.json();
         if (data.success && data.data) {
           const map = new Map<string, string>();
+          // Map: name (เลข OCR เช่น "11020") -> remarks (ชื่อแผนก เช่น "ฝ่ายสารสนเทศ")
           data.data.forEach((item: { name: string; remarks: string | null }) => {
             if (item.remarks) {
               map.set(item.name, item.remarks);
@@ -89,7 +104,7 @@ export default function PRTracking() {
       }
     };
     void fetchOcrCodes();
-  }, []);
+  }, [user]);
 
   // ตรวจสอบว่าต้องใช้ช่วง 12 เดือนหรือไม่
   const need12MonthsRange = urgencyFilter.length > 0 ||
@@ -153,6 +168,44 @@ export default function PRTracking() {
     logPrefix: '[PR-TRACKING]',
   });
 
+  // สร้างรายการ หน่วยงาน และ แผนก ที่มีใน PR data พร้อม cross-filtering
+  const { availableDepartments, availableOcrCodes } = useMemo(() => {
+    if (!data?.data) return { availableDepartments: [], availableOcrCodes: [] };
+
+    // ถ้าเลือก แผนก (ocrCodeFilter) แล้ว จะกรองให้เหลือแต่ หน่วยงาน ที่ใช้แผนกนั้น
+    let deptSourceData = data.data;
+    if (ocrCodeFilter.length > 0) {
+      deptSourceData = data.data.filter(pr => pr.primary_ocr_code2 && ocrCodeFilter.includes(pr.primary_ocr_code2));
+    }
+
+    // ถ้าเลือก หน่วยงาน (departmentFilter) แล้ว จะกรองให้เหลือแต่ แผนก ที่หน่วยงานนั้นใช้
+    let ocrSourceData = data.data;
+    if (departmentFilter.length > 0) {
+      ocrSourceData = data.data.filter(pr => pr.department_name && departmentFilter.includes(pr.department_name));
+    }
+
+    // รายการ หน่วยงาน (department_name) ที่ไม่ซ้ำ
+    const deptSet = new Set<string>();
+    deptSourceData.forEach(pr => {
+      if (pr.department_name) deptSet.add(pr.department_name);
+    });
+    const departments = Array.from(deptSet).sort((a, b) => a.localeCompare(b, 'th'));
+
+    // รายการ แผนก (ocr_code2) ที่ไม่ซ้ำ พร้อมชื่อจาก ocrCodeMap
+    const ocrSet = new Map<string, string>(); // code -> name
+    ocrSourceData.forEach(pr => {
+      if (pr.primary_ocr_code2 && !ocrSet.has(pr.primary_ocr_code2)) {
+        const ocrName = ocrCodeMap.get(pr.primary_ocr_code2) || pr.primary_ocr_code2;
+        ocrSet.set(pr.primary_ocr_code2, ocrName);
+      }
+    });
+    const ocrCodes = Array.from(ocrSet.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+
+    return { availableDepartments: departments, availableOcrCodes: ocrCodes };
+  }, [data?.data, departmentFilter, ocrCodeFilter, ocrCodeMap]);
+
   // Filter ข้อมูล PR ตาม PO Status, Urgency Level และ search filters
   const filteredData = useMemo(() => {
     if (!data?.data) return [];
@@ -162,6 +215,20 @@ export default function PRTracking() {
     // ถ้าใช้ exactPRNo จะไม่ใช้ filter อื่น (เพราะ query ไปแล้วจาก backend)
     if (exactPRNo) {
       return filtered;
+    }
+
+    // Filter by หน่วยงาน (multi-select)
+    if (departmentFilter.length > 0) {
+      filtered = filtered.filter(pr =>
+        pr.department_name && departmentFilter.includes(pr.department_name)
+      );
+    }
+
+    // Filter by แผนก/OCR Code (multi-select)
+    if (ocrCodeFilter.length > 0) {
+      filtered = filtered.filter(pr =>
+        pr.primary_ocr_code2 && ocrCodeFilter.includes(pr.primary_ocr_code2)
+      );
     }
 
     // Filter by requester name
@@ -257,6 +324,19 @@ export default function PRTracking() {
       });
     }
 
+    // Filter by WO status
+    if (woFilter) {
+      filtered = filtered.filter(pr => {
+        const woCount = pr.wo_count || 0;
+        if (woFilter === 'has_wo') {
+          return woCount > 0;
+        } else if (woFilter === 'no_wo') {
+          return woCount === 0;
+        }
+        return true;
+      });
+    }
+
     // เรียงตามที่เลือก
     if (sortBy === 'tracking_date') {
       // กรองเฉพาะ PR ที่มีข้อมูลการติดตาม (มี tracked_at)
@@ -281,7 +361,7 @@ export default function PRTracking() {
     }
 
     return filtered;
-  }, [data, poFilter, urgencyFilter, searchPRNo, searchRequester, searchDepartment, searchProject, searchTracking, trackingsMap, exactPRNo, answerStatus, sortBy]);
+  }, [data, poFilter, urgencyFilter, searchPRNo, searchRequester, searchDepartment, searchProject, searchTracking, trackingsMap, exactPRNo, answerStatus, sortBy, departmentFilter, ocrCodeFilter, woFilter]);
 
   // ฟังก์ชันค้นหา
   const handleSearch = () => {
@@ -330,6 +410,9 @@ export default function PRTracking() {
     setStatusFilter("");
     setPOFilter("");
     setUrgencyFilter([]);
+    setDepartmentFilter([]);
+    setOcrCodeFilter([]);
+    setWoFilter("");
     setSearchRequester("");
     setSearchDepartment("");
     setSearchProject("");
@@ -411,33 +494,33 @@ export default function PRTracking() {
         <div className="sticky top-0 z-10 mb-4 sm:mb-6 rounded-lg bg-white p-4 sm:p-6 shadow">
           <div className="space-y-3">
             {/* แถวที่ 1: วันที่ + Quick Date Filters + ปุ่ม Expand/Collapse */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
-              {/* Date Pickers - label อยู่ซ้ายแถวเดียวกัน */}
-              <div className="flex gap-4 flex-shrink-0 w-full sm:w-auto items-center">
-                <div className="flex items-center gap-2">
-                  <label htmlFor="dateFrom" className="text-sm font-bold text-orange-600 whitespace-nowrap">จากวันที่</label>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {/* Date Pickers - ย่อลงให้ responsive */}
+              <div className="flex gap-2 sm:gap-3 items-center flex-wrap shrink-0">
+                <div className="flex items-center gap-1">
+                  <label htmlFor="dateFrom" className="text-xs font-bold text-orange-600 whitespace-nowrap">จาก</label>
                   <input
                     type="date"
                     id="dateFrom"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="rounded-md border border-gray-300 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-[120px]"
                   />
                 </div>
-                <div className="flex items-center gap-2">
-                  <label htmlFor="dateTo" className="text-sm font-bold text-orange-600 whitespace-nowrap">ถึงวันที่</label>
+                <div className="flex items-center gap-1">
+                  <label htmlFor="dateTo" className="text-xs font-bold text-orange-600 whitespace-nowrap">ถึง</label>
                   <input
                     type="date"
                     id="dateTo"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="rounded-md border border-gray-300 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 w-[120px]"
                   />
                 </div>
               </div>
 
-              {/* Quick Date Filters - ลดขนาดลงครึ่งหนึ่ง */}
-              <div className="grid grid-cols-3 gap-2 flex-shrink-0 w-full sm:w-auto sm:max-w-[350px]">
+              {/* Quick Date Filters - ย่อลง */}
+              <div className="flex gap-0.5 shrink-0">
                 <button
                   onClick={() => {
                     const now = new Date();
@@ -446,9 +529,10 @@ export default function PRTracking() {
                     setDateFrom(firstDay.toISOString().split('T')[0]!);
                     setDateTo(lastDay.toISOString().split('T')[0]!);
                   }}
-                  className="rounded-md bg-blue-100 px-2 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-200 active:bg-blue-300 transition whitespace-nowrap"
+                  className="rounded-l-md bg-blue-100 px-1.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 transition whitespace-nowrap border-r border-blue-200"
+                  title="เดือนปัจจุบัน"
                 >
-                  📅 เดือนปัจจุบัน
+                  เดือนนี้
                 </button>
                 <button
                   onClick={() => {
@@ -458,9 +542,10 @@ export default function PRTracking() {
                     setDateFrom(twoMonthsAgo.toISOString().split('T')[0]!);
                     setDateTo(lastDay.toISOString().split('T')[0]!);
                   }}
-                  className="rounded-md bg-purple-100 px-2 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-200 active:bg-purple-300 transition whitespace-nowrap"
+                  className="bg-blue-100 px-1.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 transition whitespace-nowrap border-r border-blue-200"
+                  title="ย้อนหลัง 2 เดือน"
                 >
-                  📅 ย้อน 2 เดือน
+                  2 เดือน
                 </button>
                 <button
                   onClick={() => {
@@ -470,56 +555,171 @@ export default function PRTracking() {
                     setDateFrom(threeMonthsAgo.toISOString().split('T')[0]!);
                     setDateTo(lastDay.toISOString().split('T')[0]!);
                   }}
-                  className="rounded-md bg-orange-100 px-2 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-200 active:bg-orange-300 transition whitespace-nowrap"
+                  className="rounded-r-md bg-blue-100 px-1.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 transition whitespace-nowrap"
+                  title="ย้อนหลัง 3 เดือน"
                 >
-                  📅 ย้อน 3 เดือน
+                  3 เดือน
                 </button>
               </div>
 
-              {/* ปุ่ม Sync, รีเซ็ต, ความเร่งด่วน, การเรียง, สถานะการตอบ และ Expand/Collapse */}
-              <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0 w-full sm:w-auto">
-                {/* แถวแรก: Sync, รีเซ็ต (บนมือถือและ desktop) */}
-                <div className="flex gap-2">
+              {/* ปุ่ม Filter Dropdowns และ Expand/Collapse */}
+              <div className="flex flex-row gap-1.5 sm:gap-2 flex-1 flex-wrap items-center">
+                {/* Dropdown หน่วยงาน (Multi-select) */}
+                <div className="relative">
                   <button
-                    onClick={handleSync}
-                    disabled={isSyncing || isAutoSyncing}
-                    className={`rounded-md px-4 py-2 text-sm font-medium text-white transition whitespace-nowrap ${
-                      isAutoSyncing
-                        ? "bg-orange-600 hover:bg-orange-700 active:bg-orange-800"
-                        : "bg-green-600 hover:bg-green-700 active:bg-green-800"
-                    } disabled:bg-gray-400`}
-                    title={isAutoSyncing ? "ระบบกำลังทำงานอัตโนมัติอยู่" : "Sync ข้อมูลจาก SAP"}
+                    onClick={() => {
+                      setShowDepartmentDropdown(!showDepartmentDropdown);
+                      setShowOcrCodeDropdown(false);
+                      setShowUrgencyDropdown(false);
+                      setShowSortDropdown(false);
+                      setShowAnswerStatusDropdown(false);
+                    }}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1 min-w-[100px] ${
+                      departmentFilter.length > 0
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                    title="กรองตามหน่วยงาน"
                   >
-                    {isSyncing ? "ซิงค์..." : isAutoSyncing ? "⏳" : "🔄"}
+                    {departmentFilter.length === 0 ? 'หน่วยงาน' : `หน่วยงาน (${departmentFilter.length})`}
+                    <span className="text-[10px]">{showDepartmentDropdown ? '▲' : '▼'}</span>
                   </button>
-                  <button
-                    onClick={handleReset}
-                    className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 active:bg-purple-800 transition whitespace-nowrap"
-                  >
-                    รีเซ็ต
-                  </button>
-                  {/* ปุ่ม Expand - แสดงเฉพาะบนมือถือ */}
-                  <button
-                    type="button"
-                    onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
-                    className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 active:bg-gray-300 transition whitespace-nowrap ml-auto sm:hidden"
-                    title={isFiltersExpanded ? "ซ่อน Filters" : "แสดง Filters"}
-                  >
-                    {isFiltersExpanded ? "▲ ซ่อน" : "▼ แสดง"}
-                  </button>
+                  {showDepartmentDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowDepartmentDropdown(false)}
+                      />
+                      <div className="absolute z-20 mt-1 left-0 w-64 max-h-64 overflow-y-auto rounded-md bg-white shadow-lg border border-gray-200 top-full">
+                        <div className="py-1">
+                          <div className="px-3 py-2 text-xs text-gray-500 font-medium border-b border-gray-200 sticky top-0 bg-white">
+                            หน่วยงาน ({availableDepartments.length})
+                            {departmentFilter.length > 0 && (
+                              <button
+                                onClick={() => setDepartmentFilter([])}
+                                className="ml-2 text-red-500 hover:text-red-700"
+                              >
+                                ล้าง
+                              </button>
+                            )}
+                          </div>
+                          {availableDepartments.length === 0 ? (
+                            <div className="px-4 py-3 text-xs text-gray-400">ไม่มีข้อมูล</div>
+                          ) : (
+                            availableDepartments.map((dept) => (
+                              <label key={dept} className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={departmentFilter.includes(dept)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setDepartmentFilter([...departmentFilter, dept]);
+                                    } else {
+                                      setDepartmentFilter(departmentFilter.filter(d => d !== dept));
+                                    }
+                                  }}
+                                  className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-xs text-gray-700 truncate" title={dept}>
+                                  {dept}
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* 3 Dropdown: ความเร่งด่วน, การเรียง, สถานะการตอบ */}
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  {/* Dropdown ความเร่งด่วน */}
-                  <div className="relative w-full sm:w-auto">
-                    <button
-                      onClick={() => setShowUrgencyDropdown(!showUrgencyDropdown)}
-                      className="w-full sm:w-auto rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap"
-                      title="ความเร่งด่วน"
-                    >
-                      {urgencyFilter.length === 0 ? '⚡ ความเร่งด่วน ▼' : `⚡ (${urgencyFilter.length})`}
-                    </button>
+                {/* Dropdown แผนก/OCR Code (Multi-select) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowOcrCodeDropdown(!showOcrCodeDropdown);
+                      setShowDepartmentDropdown(false);
+                      setShowUrgencyDropdown(false);
+                      setShowSortDropdown(false);
+                      setShowAnswerStatusDropdown(false);
+                    }}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1 min-w-[80px] ${
+                      ocrCodeFilter.length > 0
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                    title="กรองตามแผนก (OCR Code)"
+                  >
+                    {ocrCodeFilter.length === 0 ? 'แผนก' : `แผนก (${ocrCodeFilter.length})`}
+                    <span className="text-[10px]">{showOcrCodeDropdown ? '▲' : '▼'}</span>
+                  </button>
+                  {showOcrCodeDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowOcrCodeDropdown(false)}
+                      />
+                      <div className="absolute z-20 mt-1 left-0 w-72 max-h-64 overflow-y-auto rounded-md bg-white shadow-lg border border-gray-200 top-full">
+                        <div className="py-1">
+                          <div className="px-3 py-2 text-xs text-gray-500 font-medium border-b border-gray-200 sticky top-0 bg-white">
+                            แผนก ({availableOcrCodes.length})
+                            {ocrCodeFilter.length > 0 && (
+                              <button
+                                onClick={() => setOcrCodeFilter([])}
+                                className="ml-2 text-red-500 hover:text-red-700"
+                              >
+                                ล้าง
+                              </button>
+                            )}
+                          </div>
+                          {availableOcrCodes.length === 0 ? (
+                            <div className="px-4 py-3 text-xs text-gray-400">ไม่มีข้อมูล</div>
+                          ) : (
+                            availableOcrCodes.map(({ code, name }) => (
+                              <label key={code} className="flex items-center px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={ocrCodeFilter.includes(code)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setOcrCodeFilter([...ocrCodeFilter, code]);
+                                    } else {
+                                      setOcrCodeFilter(ocrCodeFilter.filter(c => c !== code));
+                                    }
+                                  }}
+                                  className="h-3 w-3 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                />
+                                <span className="ml-2 text-xs text-gray-700 truncate" title={`${name} (${code})`}>
+                                  {name} <span className="text-gray-400">({code})</span>
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Dropdown ความเร่งด่วน */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowUrgencyDropdown(!showUrgencyDropdown);
+                      setShowDepartmentDropdown(false);
+                      setShowOcrCodeDropdown(false);
+                      setShowSortDropdown(false);
+                      setShowAnswerStatusDropdown(false);
+                    }}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1 ${
+                      urgencyFilter.length > 0
+                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                    title="ความเร่งด่วน"
+                  >
+                    {urgencyFilter.length === 0 ? 'ความเร่งด่วน' : `ด่วน (${urgencyFilter.length})`}
+                    <span className="text-[10px]">{showUrgencyDropdown ? '▲' : '▼'}</span>
+                  </button>
 
                     {showUrgencyDropdown && (
                       <>
@@ -557,15 +757,22 @@ export default function PRTracking() {
                     )}
                   </div>
 
-                  {/* Dropdown การเรียงลำดับ */}
-                  <div className="relative w-full sm:w-auto">
-                    <button
-                      onClick={() => setShowSortDropdown(!showSortDropdown)}
-                      className="w-full sm:w-auto rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap"
-                      title="เรียงลำดับ"
-                    >
-                      {sortBy === 'pr_number' ? '🔢 เลข PR' : '📅 วันติดตาม'} ▼
-                    </button>
+                {/* Dropdown การเรียงลำดับ */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowSortDropdown(!showSortDropdown);
+                      setShowDepartmentDropdown(false);
+                      setShowOcrCodeDropdown(false);
+                      setShowUrgencyDropdown(false);
+                      setShowAnswerStatusDropdown(false);
+                    }}
+                    className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1"
+                    title="เรียงลำดับ"
+                  >
+                    {sortBy === 'pr_number' ? 'เรียง: PR' : 'เรียง: วันติดตาม'}
+                    <span className="text-[10px]">{showSortDropdown ? '▲' : '▼'}</span>
+                  </button>
 
                     {showSortDropdown && (
                       <>
@@ -603,23 +810,35 @@ export default function PRTracking() {
                     )}
                   </div>
 
-                  {/* Dropdown สถานะการตอบ */}
-                  <div className="relative w-full sm:w-auto">
-                    <button
-                      onClick={() => setShowAnswerStatusDropdown(!showAnswerStatusDropdown)}
-                      className="w-full sm:w-auto rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap"
-                      title="สถานะการตอบ"
-                    >
-                      {
-                        answerStatus.allAnswered || answerStatus.partiallyAnswered || answerStatus.neverAnswered
-                          ? [
-                              answerStatus.allAnswered && '✅',
-                              answerStatus.partiallyAnswered && '⚠️',
-                              answerStatus.neverAnswered && '❌'
-                            ].filter(Boolean).join(' ')
-                          : 'สถานะ ▼'
-                      }
-                    </button>
+                {/* Dropdown สถานะการตอบ */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowAnswerStatusDropdown(!showAnswerStatusDropdown);
+                      setShowDepartmentDropdown(false);
+                      setShowOcrCodeDropdown(false);
+                      setShowUrgencyDropdown(false);
+                      setShowSortDropdown(false);
+                    }}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1 ${
+                      answerStatus.allAnswered || answerStatus.partiallyAnswered || answerStatus.neverAnswered
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                    title="สถานะการตอบ"
+                  >
+                    สถานะตอบ
+                    {(answerStatus.allAnswered || answerStatus.partiallyAnswered || answerStatus.neverAnswered) && (
+                      <span className="ml-0.5">
+                        {[
+                          answerStatus.allAnswered && '✅',
+                          answerStatus.partiallyAnswered && '⚠️',
+                          answerStatus.neverAnswered && '❌'
+                        ].filter(Boolean).join('')}
+                      </span>
+                    )}
+                    <span className="text-[10px]">{showAnswerStatusDropdown ? '▲' : '▼'}</span>
+                  </button>
 
                     {showAnswerStatusDropdown && (
                       <>
@@ -660,16 +879,89 @@ export default function PRTracking() {
                         </div>
                       </>
                     )}
-                  </div>
                 </div>
 
+                {/* WO Filter Dropdown */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowWoDropdown(!showWoDropdown);
+                      setShowAnswerStatusDropdown(false);
+                      setShowDepartmentDropdown(false);
+                      setShowOcrCodeDropdown(false);
+                      setShowUrgencyDropdown(false);
+                      setShowSortDropdown(false);
+                    }}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium hover:bg-gray-50 focus:border-blue-500 focus:outline-none whitespace-nowrap flex items-center gap-1 ${
+                      woFilter
+                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                    title="กรองตาม Work Order"
+                  >
+                    WO
+                    {woFilter && (
+                      <span className="ml-0.5">
+                        {woFilter === 'has_wo' ? '✓' : '✗'}
+                      </span>
+                    )}
+                    <span className="text-[10px]">{showWoDropdown ? '▲' : '▼'}</span>
+                  </button>
+
+                  {showWoDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowWoDropdown(false)}
+                      />
+                      <div className="absolute z-20 mt-1 left-0 sm:right-0 sm:left-auto w-40 rounded-md bg-white shadow-lg border border-gray-200 top-full">
+                        <div className="py-1">
+                          <button
+                            onClick={() => { setWoFilter(""); setShowWoDropdown(false); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${!woFilter ? 'bg-gray-100 font-medium' : ''}`}
+                          >
+                            ทั้งหมด
+                          </button>
+                          <button
+                            onClick={() => { setWoFilter("has_wo"); setShowWoDropdown(false); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${woFilter === 'has_wo' ? 'bg-orange-100 font-medium text-orange-700' : ''}`}
+                          >
+                            ✓ มี WO
+                          </button>
+                          <button
+                            onClick={() => { setWoFilter("no_wo"); setShowWoDropdown(false); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${woFilter === 'no_wo' ? 'bg-orange-100 font-medium text-orange-700' : ''}`}
+                          >
+                            ✗ ไม่มี WO
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Spacer เพื่อดันปุ่มไปขวา */}
+                <div className="flex-1"></div>
+
+                {/* Reset button */}
+                <button
+                  onClick={handleReset}
+                  className="rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 active:bg-red-300 transition whitespace-nowrap"
+                  title="รีเซ็ต filters ทั้งหมด"
+                >
+                  รีเซ็ต
+                </button>
+
+                {/* Expand/Collapse button - ขวาสุด */}
                 <button
                   type="button"
                   onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
-                  className="hidden sm:block rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 active:bg-gray-300 transition whitespace-nowrap"
-                  title={isFiltersExpanded ? "ซ่อน Filters" : "แสดง Filters"}
+                  className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 transition whitespace-nowrap flex items-center gap-1"
+                  title={isFiltersExpanded ? "ซ่อน Filters เพิ่มเติม" : "แสดง Filters เพิ่มเติม"}
                 >
-                  {isFiltersExpanded ? "▲ ซ่อน" : "▼ แสดง"}
+                  ตัวกรองอื่นๆ
+                  <span className="text-[10px]">{isFiltersExpanded ? '▲' : '▼'}</span>
                 </button>
               </div>
             </div>
@@ -901,5 +1193,14 @@ export default function PRTracking() {
         />
       </div>
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function PRTracking() {
+  return (
+    <PageGuard action="pr_tracking.read" pageName="PR Tracking">
+      <PRTrackingContent />
+    </PageGuard>
   );
 }

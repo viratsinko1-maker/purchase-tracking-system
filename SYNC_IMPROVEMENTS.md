@@ -260,7 +260,7 @@ tail -f /var/log/pr-po-sync.log
    # Windows
    Program: node
    Arguments: scripts/daily-sync.js
-   Start in: D:\VS\network\VS\PR_PO\my-t3-app
+   Start in: D:\VS\network\VS\PR_PO\test-github-clone
    Trigger: Daily at 01:00
    ```
 

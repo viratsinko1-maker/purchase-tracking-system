@@ -2,7 +2,7 @@ import { z } from "zod";
 import sql from "mssql";
 import {
   createTRPCRouter,
-  publicProcedure,
+  createTableProcedure,
 } from "~/server/api/trpc";
 import { notifyPODeliveryTracking } from "~/server/services/telegram";
 
@@ -28,7 +28,7 @@ const sqlConfig = {
 export const poRouter = createTRPCRouter({
 
   // 🔹 1. ดึงสรุป PO ทั้งหมดจาก Materialized View
-  getAllSummary: publicProcedure
+  getAllSummary: createTableProcedure('po_tracking', 'read')
     .input(
       z.object({
         search: z.string().optional(),
@@ -98,7 +98,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 2. ดึงสถิติ PO
-  getStats: publicProcedure
+  getStats: createTableProcedure('po_tracking', 'read')
     .input(
       z.object({
         search: z.string().optional(),
@@ -165,7 +165,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 3. ดึงรายละเอียด PO พร้อม lines
-  getDetail: publicProcedure
+  getDetail: createTableProcedure('po_tracking', 'read')
     .input(z.object({ poNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const { poNo } = input;
@@ -201,7 +201,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 4. ดึงประวัติ Sync
-  getSyncHistory: publicProcedure
+  getSyncHistory: createTableProcedure('admin_sync_po', 'read')
     .input(
       z.object({
         dateFrom: z.string().optional(),
@@ -249,7 +249,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 5. Sync ข้อมูลจาก SAP (Full Sync Only)
-  sync: publicProcedure.mutation(async ({ ctx }) => {
+  sync: createTableProcedure('po_tracking', 'sync').mutation(async ({ ctx }) => {
     let sqlPool: sql.ConnectionPool | null = null;
     const syncStartTime = new Date();
 
@@ -413,7 +413,7 @@ export const poRouter = createTRPCRouter({
   }),
 
   // 🔹 6. บันทึกการติดตามการส่งของ PO
-  createDeliveryTracking: publicProcedure
+  createDeliveryTracking: createTableProcedure('po_delivery', 'create')
     .input(z.object({
       poNo: z.number(),
       deliveryStatus: z.enum(['ปกติ', 'ไม่ปกติ', 'อื่นๆ']),
@@ -476,7 +476,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 7. ดึงประวัติการติดตามการส่งของ PO
-  getDeliveryTrackingHistory: publicProcedure
+  getDeliveryTrackingHistory: createTableProcedure('po_tracking', 'read')
     .input(z.object({ poNo: z.number() }))
     .query(async ({ ctx, input }) => {
       const history = await ctx.db.$queryRawUnsafe(`
@@ -491,7 +491,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 8. ดึงการติดตามล่าสุดของ PO แต่ละใบ (สำหรับแสดงใน card)
-  getLatestDeliveryTrackings: publicProcedure
+  getLatestDeliveryTrackings: createTableProcedure('po_tracking', 'read')
     .input(z.object({ poNumbers: z.array(z.number()) }))
     .query(async ({ ctx, input }) => {
       if (input.poNumbers.length === 0) {
@@ -526,7 +526,7 @@ export const poRouter = createTRPCRouter({
     }),
 
   // 🔹 9. ดึงไฟล์แนบของ PO
-  getPOAttachments: publicProcedure
+  getPOAttachments: createTableProcedure('po_tracking', 'read')
     .input(z.object({
       poNo: z.number(),
     }))

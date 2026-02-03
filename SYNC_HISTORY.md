@@ -1,7 +1,7 @@
 # Sync History & Change Tracking
 
-> **Version**: v1.1.0
-> **Last Updated**: 2025-10-25
+> **Version**: v4.0
+> **Last Updated**: 2026-01-31
 > **Status**: ✅ Production Ready
 
 ระบบบันทึกและติดตามการเปลี่ยนแปลงของข้อมูล PR-PO จาก SAP B1 อัตโนมัติ
@@ -485,6 +485,6 @@ A: เพื่อประหยัดพื้นที่ เพราะ Ful
 
 ---
 
-**Last Updated**: 2025-10-25
-**Version**: v1.1.0
+**Last Updated**: 2026-01-31
+**Version**: v4.0
 **Status**: ✅ Production Ready

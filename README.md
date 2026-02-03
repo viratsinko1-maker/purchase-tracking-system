@@ -65,7 +65,10 @@ npm run dev
 - ✅ **Incremental Sync** - ดึงเฉพาะข้อมูลที่เปลี่ยนแปลง (เร็วกว่า Full Sync 10-100 เท่า)
 - ✅ **Attachment Management** - จัดการไฟล์แนบจาก network share
 - ✅ **Sync History** - ติดตามประวัติการซิงค์และการเปลี่ยนแปลง
-- ✅ **Activity Trail** - บันทึกการเข้าใช้งานของ users
+- ✅ **Audit Trail** - บันทึกทุกการเปลี่ยนแปลงในระบบ (CRUD, Login/Logout, PR Approval)
+- ✅ **PR Approval Workflow** - ระบบอนุมัติ PR (Line + Cost Center Approvers)
+- ✅ **User Management** - จัดการผู้ใช้พร้อม Role-based access
+- ✅ **Warehouse Receive Goods** - บันทึกการรับของและยืนยัน
 - ✅ **PR Overview** - Dashboard สรุปภาพรวม PR
 - ✅ **Auto-mount Network Share** - เชื่อมต่อ network drive อัตโนมัติ
 
@@ -329,15 +332,22 @@ change_details    TEXT                  -- รายละเอียด JSON
 created_at        TIMESTAMP
 ```
 
-#### 7. `activity_trail` - บันทึกการใช้งาน
+#### 7. `activity_trail` - Audit Trail (บันทึกทุกการเปลี่ยนแปลง)
 ```sql
 id                SERIAL PRIMARY KEY
-user_id           VARCHAR(255)          -- User ID (จาก NextAuth)
-username          VARCHAR(255)          -- ชื่อ user
-activity_type     VARCHAR(50)           -- PAGE_VIEW, PR_DETAIL_VIEW, etc.
-activity_details  TEXT                  -- รายละเอียด
-ip_address        VARCHAR(45)           -- IP Address
-user_agent        TEXT                  -- Browser info
+user_id           VARCHAR(255)          -- User ID
+user_name         VARCHAR(255)          -- ชื่อ user
+ip_address        VARCHAR(50)           -- IP Address
+action            VARCHAR(50)           -- CREATE, READ, UPDATE, DELETE, LOGIN, etc.
+table_name        VARCHAR(100)          -- ตารางที่เปลี่ยนแปลง
+record_id         VARCHAR(255)          -- ID ของ record
+old_values        JSONB                 -- ค่าก่อนเปลี่ยน
+new_values        JSONB                 -- ค่าหลังเปลี่ยน
+description       TEXT                  -- คำอธิบาย
+pr_no             INTEGER               -- เลข PR (ถ้ามี)
+po_no             INTEGER               -- เลข PO (ถ้ามี)
+metadata          JSONB                 -- ข้อมูลเพิ่มเติม
+computer_name     VARCHAR(255)          -- ชื่อเครื่อง
 created_at        TIMESTAMP
 ```
 
@@ -953,6 +963,9 @@ curl http://dev.tmkpalmoil.com:2025/api/sync-pr-data
 - `README_PR_TRACKING_V2.md` - แผน v2.0 (ยังไม่ implement)
 - `SYNC_STRATEGIES.md` - กลยุทธ์การซิงค์ต่างๆ
 - `SYNC_HISTORY.md` - Sync History & Change Tracking
+- `AUDIT_TRAIL.md` - ระบบ Audit Trail
+- `RECEIVE_GOODS.md` - ระบบรับของและ WO Sync
+- `LOGIN_SYSTEM.md` - ระบบ Login และ User Management
 - `PROJECT_SUMMARY.md` - สรุปโปรเจกต์โดยละเอียด
 
 ### Scripts สำหรับ Development
@@ -983,13 +996,21 @@ This project is private and proprietary.
 
 ## 📌 Version Information
 
-**Current Version**: 3.0
+**Current Version**: 4.0
 **Port**: 2025
 **Database**: PostgreSQL
 **Source**: SAP B1 (SQL Server)
-**Last Updated**: 2025-11-25
+**Last Updated**: 2026-01-31
 
 ### Version History
+
+**v4.0** (2026-01-31) - PR Approval Workflow, Audit Trail & Security
+- ✅ PR Approval Workflow (Line + Cost Center Approvers)
+- ✅ Telegram Notifications
+- ✅ Comprehensive Audit Trail System
+- ✅ User Management with bcrypt hashing
+- ✅ Warehouse Receive Goods module
+- ✅ Role-based access (PR, Manager, Approval, Admin)
 
 **v3.0** (2025-11-25) - Comprehensive Documentation
 - ✅ รายละเอียด README แบบครบถ้วน

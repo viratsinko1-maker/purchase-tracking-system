@@ -1,8 +1,8 @@
 # กลยุทธ์การซิงค์ข้อมูล PR-PO
 
-> **Last Updated**: 2025-10-25
+> **Last Updated**: 2026-01-31
 >
-> **Current Version**: v1.1.1 (Critical Fix: DATE-ONLY Comparison)
+> **Current Version**: v4.0
 >
 > **Recommendation**: Smart Sync (วิธีที่ 5) - Full Sync ตอนตีหนึ่ง + Incremental Sync ตอนอื่นๆ ⭐
 
@@ -30,7 +30,7 @@
 
 ### วิธีใช้
 ```bash
-cd my-t3-app
+cd test-github-clone
 node sync-pr-po-data.js
 ```
 
@@ -63,7 +63,7 @@ node sync-pr-po-data.js
 
 ### วิธีใช้
 ```bash
-cd my-t3-app
+cd test-github-clone
 node sync-pr-po-upsert.js
 ```
 
@@ -572,7 +572,7 @@ ORDER BY created_at DESC;
 
 ### Workflow ปัจจุบัน (Production)
 ```bash
-cd my-t3-app
+cd test-github-clone
 
 # 1. Sync ข้อมูลจาก SQL Server
 node sync-pr-po-data.js
@@ -591,20 +591,20 @@ npm run dev
 **สร้างไฟล์ `sync-task.bat`:**
 ```batch
 @echo off
-cd C:\path\to\my-t3-app
+cd D:\VS\network\VS\PR_PO\test-github-clone
 call node sync-pr-po-data.js >> sync.log 2>&1
 call node refresh-materialized-view.js >> sync.log 2>&1
 echo Sync completed at %date% %time% >> sync.log
 ```
 
 **ตั้ง Windows Task Scheduler:**
-- Program: `C:\path\to\my-t3-app\sync-task.bat`
+- Program: `D:\VS\network\VS\PR_PO\test-github-clone\sync-task.bat`
 - Schedule: ทุก 15 นาที (หรือตามต้องการ)
 - Run whether user is logged on or not
 
 ### Workflow สำหรับข้อมูลเยอะ (> 100k)
 ```bash
-cd my-t3-app
+cd test-github-clone
 
 # 1. Upsert ข้อมูล (อัพเดตเฉพาะที่เปลี่ยน)
 node sync-pr-po-upsert.js
@@ -759,8 +759,8 @@ A: แนะนำ:
 
 ---
 
-**Last Updated**: 2025-10-25
-**Current Version**: v1.1.1 (Critical Fix)
+**Last Updated**: 2026-01-31
+**Current Version**: v4.0
 **Recommended Method**: Smart Sync (วิธีที่ 5) ⭐
 **Database**: PostgreSQL + SQL Server (SAP B1)
 **Performance**: Incremental Sync 2-5s | Full Sync 60-90s (ตีหนึ่ง)
