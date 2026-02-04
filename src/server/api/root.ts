@@ -1,6 +1,7 @@
 import { prpoRouter } from "~/server/api/routers/prpo";
 import { prRouter } from "~/server/api/routers/pr";
 import { poRouter } from "~/server/api/routers/po";
+import { woRouter } from "~/server/api/routers/wo";
 import { testRouter } from "~/server/api/routers/test";
 import { syncRouter } from "~/server/api/routers/sync";
 import { activityTrailRouter } from "~/server/api/routers/activityTrail";
@@ -17,6 +18,7 @@ export const appRouter = createTRPCRouter({
   prpo: prpoRouter,  // Schema เก่า (deprecated - จะลบในอนาคต)
   pr: prRouter,      // Schema ใหม่ v2.0
   po: poRouter,      // PO Tracking v1.0
+  wo: woRouter,      // WO Sync v1.0
   test: testRouter,  // Test utilities
   sync: syncRouter,  // Auto-Sync Status & Control
   activityTrail: activityTrailRouter,  // Activity Trail Logging

@@ -1,82 +1,31 @@
-import { useState, useEffect } from "react";
 import Head from "next/head";
-import { authFetch } from "~/lib/authFetch";
+import { api } from "~/utils/api";
 import PageGuard from "~/components/PageGuard";
 
-interface WOSyncStats {
-  woSummary: {
-    count: number;
-    lastSync: string | null;
-  };
-  woGIDetail: {
-    count: number;
-    lastSync: string | null;
-  };
-  woPODetail: {
-    count: number;
-    lastSync: string | null;
-  };
-  prWOLink: {
-    count: number;
-    lastSync: string | null;
-  };
-}
-
 function WOSyncHistoryContent() {
-  const [stats, setStats] = useState<WOSyncStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState("");
+  // Use tRPC queries instead of authFetch
+  const statsQuery = api.wo.getSyncStats.useQuery(undefined, {
+    refetchInterval: false,
+  });
 
-  const loadStats = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await authFetch("/api/admin/wo-sync-stats");
-      const data = await response.json();
-
-      if (response.ok) {
-        setStats(data);
-      } else {
-        setError(data.error || "ไม่สามารถโหลดข้อมูลได้");
-      }
-    } catch (err) {
-      console.error("Load stats error:", err);
-      setError("เกิดข้อผิดพลาดในการโหลดข้อมูล");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadStats();
-  }, []);
-
-  const handleManualSync = async () => {
-    if (syncing) return;
-
-    try {
-      setSyncing(true);
-      setError("");
-
-      const response = await authFetch("/api/admin/trigger-wo-sync", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (response.ok) {
+  const syncMutation = api.wo.sync.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
         alert("WO Sync สำเร็จ!");
-        void loadStats();
+        void statsQuery.refetch();
       } else {
-        setError(data.error || "ไม่สามารถ Sync ได้");
+        alert(data.error || "ไม่สามารถ Sync ได้");
       }
-    } catch (err) {
-      console.error("Sync error:", err);
-      setError("เกิดข้อผิดพลาดในการ Sync");
-    } finally {
-      setSyncing(false);
-    }
+    },
+    onError: (error) => {
+      console.error("Sync error:", error);
+      alert("เกิดข้อผิดพลาดในการ Sync: " + error.message);
+    },
+  });
+
+  const handleManualSync = () => {
+    if (syncMutation.isPending) return;
+    syncMutation.mutate();
   };
 
   const formatDateTime = (dateString: string | null) => {
@@ -91,6 +40,11 @@ function WOSyncHistoryContent() {
       second: "2-digit",
     });
   };
+
+  const stats = statsQuery.data;
+  const loading = statsQuery.isLoading;
+  const syncing = syncMutation.isPending;
+  const error = statsQuery.error?.message || "";
 
   return (
     <>
@@ -113,7 +67,7 @@ function WOSyncHistoryContent() {
               disabled={syncing || loading}
               className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
             >
-              {syncing ? "กำลัง Sync..." : "🔄 Manual Sync"}
+              {syncing ? "กำลัง Sync..." : "Manual Sync"}
             </button>
           </div>
 
@@ -145,7 +99,7 @@ function WOSyncHistoryContent() {
               <div className="rounded-lg bg-white p-6 shadow">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-100">
-                    <span className="text-2xl">🔧</span>
+                    <span className="text-2xl">W</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">WO Summary</h3>
@@ -172,7 +126,7 @@ function WOSyncHistoryContent() {
               <div className="rounded-lg bg-white p-6 shadow">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                    <span className="text-2xl">📤</span>
+                    <span className="text-2xl">GI</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">WO GI Detail</h3>
@@ -199,7 +153,7 @@ function WOSyncHistoryContent() {
               <div className="rounded-lg bg-white p-6 shadow">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                    <span className="text-2xl">📦</span>
+                    <span className="text-2xl">PO</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">WO PO Detail</h3>
@@ -226,7 +180,7 @@ function WOSyncHistoryContent() {
               <div className="rounded-lg bg-white p-6 shadow">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
-                    <span className="text-2xl">🔗</span>
+                    <span className="text-2xl">LK</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">PR-WO Link</h3>
