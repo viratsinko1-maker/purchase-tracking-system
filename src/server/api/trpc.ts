@@ -27,6 +27,7 @@ import { isAdminRole, type PermissionAction } from "~/lib/permissions";
 interface CreateContextOptions {
   db: typeof db;
   req?: CreateNextContextOptions["req"];
+  isServerCall?: boolean; // For internal server-side calls (scheduler, scripts)
 }
 
 /**
@@ -43,6 +44,7 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     db: opts.db,
     req: opts.req,
+    isServerCall: opts.isServerCall ?? false,
   };
 };
 
@@ -160,7 +162,12 @@ interface UserInfo {
   role: string;
 }
 
-function getUserFromContext(ctx: { req?: CreateNextContextOptions["req"] }): UserInfo | null {
+function getUserFromContext(ctx: { req?: CreateNextContextOptions["req"]; isServerCall?: boolean }): UserInfo | null {
+  // For server-side internal calls (scheduler, scripts), return a system user
+  if (ctx.isServerCall) {
+    return { id: 'system', role: 'Admin' };
+  }
+
   if (!ctx.req) return null;
 
   const userId = ctx.req.headers['x-user-id'] as string | undefined;

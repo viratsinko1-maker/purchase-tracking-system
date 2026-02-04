@@ -6,13 +6,9 @@
 import { api } from "~/utils/api";
 import { formatName } from "~/utils/formatters";
 
+// PRSummary interface - simplified, receive good data is fetched separately
 interface PRSummary {
-  receipt_date?: Date | string | null;
-  received_by?: string | null;
-  approval_status?: string | null;
-  approval_reason?: string | null;
-  approved_by?: string | null;
-  approved_at?: Date | string | null;
+  // Reserved for future use
 }
 
 interface ExpandedPRRowProps {
@@ -51,6 +47,12 @@ export default function ExpandedPRRow({
     { enabled: poNumbers.length > 0 && isExpanded }
   );
 
+  // Fetch receive good data
+  const { data: receiveGoodData } = api.pr.getAllReceived.useQuery(
+    { search: String(prNo), limit: 100 },
+    { enabled: isExpanded }
+  );
+
   // Helper functions
   const formatDate = (date: Date | string | null | undefined) => {
     if (!date) return "-";
@@ -69,7 +71,7 @@ export default function ExpandedPRRow({
   if (isPrLoading) {
     return (
       <tr>
-        <td colSpan={10} className="px-4 py-8 bg-blue-50">
+        <td colSpan={12} className="px-4 py-8 bg-blue-50">
           <div className="flex items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
             <span className="ml-3 text-sm text-gray-600">กำลังโหลดข้อมูล...</span>
@@ -82,7 +84,7 @@ export default function ExpandedPRRow({
   if (!prData) {
     return (
       <tr>
-        <td colSpan={10} className="px-4 py-4 bg-red-50 text-center text-sm text-red-600">
+        <td colSpan={12} className="px-4 py-4 bg-red-50 text-center text-sm text-red-600">
           ไม่พบข้อมูล PR #{prNo}
         </td>
       </tr>
@@ -91,7 +93,7 @@ export default function ExpandedPRRow({
 
   return (
     <tr className="bg-blue-50">
-      <td colSpan={10} className="px-6 py-4">
+      <td colSpan={12} className="px-6 py-4">
         <div className="space-y-4">
           {/* Section 1: Basic PR Info */}
           <div className="rounded-lg bg-white p-4 shadow-sm">
@@ -277,77 +279,26 @@ export default function ExpandedPRRow({
             )}
           </div>
 
-          {/* Section 4: Document Receipt & Approval Status */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Left: Document Receipt */}
-            <div className="rounded-lg bg-white p-4 shadow-sm">
-              <h4 className="mb-3 text-sm font-semibold text-gray-900">การรับเอกสาร</h4>
-              {prSummary.receipt_date ? (
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-xs text-gray-600">วันที่รับเอกสาร (ล่าสุด)</p>
-                    <p className="text-sm font-medium text-gray-900">{formatDate(prSummary.receipt_date)}</p>
-                  </div>
-                  {prSummary.received_by && (
-                    <div>
-                      <p className="text-xs text-gray-600">ผู้รับเอกสาร</p>
-                      <p className="text-sm font-medium text-gray-900">{prSummary.received_by}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-xs text-gray-500">
-                  ยังไม่มีการรับเอกสาร
-                </div>
-              )}
-            </div>
-
-            {/* Right: Approval Status */}
-            <div className="rounded-lg bg-white p-4 shadow-sm">
-              <h4 className="mb-3 text-sm font-semibold text-gray-900">สถานะการยืนยัน</h4>
-              {prSummary.approval_status ? (
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-xs text-gray-600">สถานะ</p>
-                    <p className={`text-sm font-semibold ${
-                      prSummary.approval_status === 'Approve'
-                        ? 'text-green-700'
-                        : prSummary.approval_status === 'Reject'
-                        ? 'text-red-700'
-                        : 'text-yellow-700'
-                    }`}>
-                      {prSummary.approval_status === 'Approve'
-                        ? 'อนุมัติ'
-                        : prSummary.approval_status === 'Reject'
-                        ? 'ปฏิเสธ'
-                        : 'รอดำเนินการ'}
-                    </p>
-                  </div>
-                  {prSummary.approval_reason && (
-                    <div>
-                      <p className="text-xs text-gray-600">เหตุผล</p>
-                      <p className="text-sm text-gray-900">{prSummary.approval_reason}</p>
-                    </div>
-                  )}
-                  {prSummary.approved_by && (
-                    <div>
-                      <p className="text-xs text-gray-600">ผู้อนุมัติ</p>
-                      <p className="text-sm text-gray-900">{prSummary.approved_by}</p>
-                    </div>
-                  )}
-                  {prSummary.approved_at && (
-                    <div>
-                      <p className="text-xs text-gray-600">วันเวลาที่อนุมัติ</p>
-                      <p className="text-sm text-gray-900">{formatDate(prSummary.approved_at)}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-xs text-gray-500">
-                  ยังไม่มีการยืนยัน
-                </div>
-              )}
-            </div>
+          {/* Section 4: Receive Good Summary */}
+          <div className="rounded-lg bg-white p-4 shadow-sm">
+            <h4 className="mb-3 text-sm font-semibold text-gray-900">สรุปการรับของ</h4>
+            {receiveGoodData && receiveGoodData.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                  Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
+                </span>
+                <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+                  Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
+                </span>
+                <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
+                  Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
+                </span>
+              </div>
+            ) : (
+              <div className="text-center py-4 text-xs text-gray-500">
+                ยังไม่มีการรับของ
+              </div>
+            )}
           </div>
         </div>
       </td>

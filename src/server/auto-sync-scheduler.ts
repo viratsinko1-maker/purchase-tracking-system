@@ -51,8 +51,8 @@ async function syncPR() {
   console.log('[AUTO-SYNC] Starting PR FULL sync...');
 
   try {
-    // สร้าง tRPC caller แบบ server-side พร้อม context
-    const caller = createCaller({ db, req: undefined });
+    // สร้าง tRPC caller แบบ server-side พร้อม context (isServerCall bypasses auth)
+    const caller = createCaller({ db, req: undefined, isServerCall: true });
 
     // เรียก PR sync ด้วย fullSync: true
     const result = await caller.pr.sync({ fullSync: true });
@@ -72,8 +72,8 @@ async function syncPO() {
   console.log('[AUTO-SYNC] Starting PO FULL sync...');
 
   try {
-    // สร้าง tRPC caller แบบ server-side พร้อม context
-    const caller = createCaller({ db, req: undefined });
+    // สร้าง tRPC caller แบบ server-side พร้อม context (isServerCall bypasses auth)
+    const caller = createCaller({ db, req: undefined, isServerCall: true });
 
     // เรียก PO sync
     const result = await caller.po.sync();

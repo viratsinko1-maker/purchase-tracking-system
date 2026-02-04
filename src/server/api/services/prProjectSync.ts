@@ -6,7 +6,7 @@
  * - T3.[PrjName] = ชื่อโครงการจาก OPRJ
  */
 
-import * as sql from 'mssql';
+import sql from 'mssql';
 import { db } from '~/server/db';
 
 // SQL Server configuration (SAP B1)

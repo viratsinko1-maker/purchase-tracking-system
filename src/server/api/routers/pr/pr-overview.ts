@@ -105,7 +105,27 @@ export const prOverviewRouter = createTRPCRouter({
           ) AS primary_ocr_code2,
           (
             SELECT COUNT(*) FROM pr_wo_link WHERE pr_doc_num = s.doc_num
-          ) AS wo_count
+          ) AS wo_count,
+          (
+            SELECT ARRAY_AGG(wo_doc_num ORDER BY wo_doc_num)
+            FROM pr_wo_link
+            WHERE pr_doc_num = s.doc_num
+          ) AS wo_numbers_arr,
+          (
+            SELECT prj_code FROM pr_project_link
+            WHERE pr_doc_num = s.doc_num
+            ORDER BY line_num LIMIT 1
+          ) AS project_code,
+          (
+            SELECT prj_name FROM pr_project_link
+            WHERE pr_doc_num = s.doc_num
+            ORDER BY line_num LIMIT 1
+          ) AS project_name,
+          (
+            SELECT project FROM pr_lines
+            WHERE pr_doc_num = s.doc_num AND project IS NOT NULL AND project != ''
+            ORDER BY line_num LIMIT 1
+          ) AS project_code_fallback
         FROM mv_pr_summary s
         LEFT JOIN pr_document_receipt r ON s.doc_num = r.pr_doc_num
         LEFT JOIN pr_document_approval a ON s.doc_num = a.pr_doc_num
@@ -122,6 +142,10 @@ export const prOverviewRouter = createTRPCRouter({
         pending_lines: row.pending_lines ? Number(row.pending_lines) : 0,
         total_po_quantity: row.total_po_quantity ? Number(row.total_po_quantity) : null,
         wo_count: row.wo_count ? Number(row.wo_count) : 0,
+        wo_numbers_arr: row.wo_numbers_arr || [],
+        // Project: ใช้ pr_project_link ก่อน ถ้าไม่มีใช้ pr_lines.project
+        project_code: row.project_code || row.project_code_fallback || null,
+        project_name: row.project_name || null,
       }));
 
       return {

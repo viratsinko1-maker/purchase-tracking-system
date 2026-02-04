@@ -9,6 +9,7 @@ import Head from "next/head";
 import PRDetailModal from "~/components/PRDetailModal";
 import PRDocumentReceiptModal from "~/components/PRDocumentReceiptModal";
 import PODetailModal from "~/components/PODetailModal";
+import WODetailModal from "~/components/WODetailModal";
 
 // Import shared utils
 import { formatName } from "~/utils/formatters";
@@ -36,6 +37,7 @@ export default function PROverviewPage() {
   const [selectedPRForReceipt, setSelectedPRForReceipt] = useState<number | null>(null);
   const [selectedPRData, setSelectedPRData] = useState<any>(null);
   const [selectedPO, setSelectedPO] = useState<number | null>(null); // สำหรับเปิด PO Modal จาก expanded row
+  const [selectedWO, setSelectedWO] = useState<number | null>(null); // สำหรับเปิด WO Modal
   const [delayFilters, setDelayFilters] = useState<string[]>([]); // Array: "0-7", "7-14", "14-30", "30-90", "90-180"
   const [isDelayDropdownOpen, setIsDelayDropdownOpen] = useState(false);
   const delayDropdownRef = useRef<HTMLDivElement>(null);
@@ -492,6 +494,9 @@ export default function PROverviewPage() {
                         ชื่อผู้เปิด
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        โครงการ
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         วันที่เปิด PR
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -529,6 +534,9 @@ export default function PROverviewPage() {
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         PO
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        WO
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
                         Actions
@@ -587,6 +595,16 @@ export default function PROverviewPage() {
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {formatName(pr.req_name)}
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {pr.project_code ? (
+                            <span
+                              className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 cursor-help"
+                              title={pr.project_name || pr.project_code}
+                            >
+                              {pr.project_code}
+                            </span>
+                          ) : "-"}
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                           {new Date(pr.create_date).toLocaleDateString("th-TH", {
                             year: "numeric",
@@ -623,6 +641,22 @@ export default function PROverviewPage() {
                           >
                             {poStatus.withPO}/{poStatus.total}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm">
+                          {pr.wo_numbers_arr && pr.wo_numbers_arr.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 justify-center">
+                              {pr.wo_numbers_arr.map((wo: number) => (
+                                <button
+                                  key={wo}
+                                  onClick={() => setSelectedWO(wo)}
+                                  className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-teal-100 text-teal-800 hover:bg-teal-200 hover:text-teal-900 cursor-pointer transition"
+                                  title="คลิกเพื่อดูรายละเอียด WO"
+                                >
+                                  WO-{wo}
+                                </button>
+                              ))}
+                            </div>
+                          ) : "-"}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-center">
                           <button
@@ -714,6 +748,15 @@ export default function PROverviewPage() {
           isOpen={true}
           onClose={() => setSelectedPO(null)}
           hideTrackingButtons={false}
+        />
+      )}
+
+      {/* WO Detail Modal */}
+      {selectedWO && (
+        <WODetailModal
+          woNo={selectedWO}
+          isOpen={true}
+          onClose={() => setSelectedWO(null)}
         />
       )}
     </>
