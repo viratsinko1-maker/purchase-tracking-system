@@ -15,8 +15,8 @@ async function sendDelayedPRNotification() {
   console.log('[DELAYED-PR-NOTIFY] 🚀 Starting delayed PR notification...');
 
   try {
-    // สร้าง tRPC caller แบบ server-side
-    const caller = createCaller({ db, req: undefined });
+    // สร้าง tRPC caller แบบ server-side (isServerCall bypasses auth)
+    const caller = createCaller({ db, req: undefined, isServerCall: true });
 
     // ดึงข้อมูล PR ที่ล่าช้าแบบจัดกลุ่ม
     const delayedPRs = await caller.pr.getDelayedPRsGrouped();
