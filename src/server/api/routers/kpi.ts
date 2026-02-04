@@ -1605,4 +1605,221 @@ export const kpiRouter = createTRPCRouter({
         byUser,
       };
     }),
+
+  // =====================================================
+  // ADMIN: View Individual User KPI
+  // =====================================================
+
+  // 🔹 Admin: Get all users for dropdown selection
+  getAdminUsersList: adminProcedure
+    .query(async ({ ctx }) => {
+      const users = await ctx.db.user_production.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          email: true,
+          role: true,
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      return users.map(u => ({
+        id: u.id,
+        name: u.name || u.username || u.email || u.id,
+        role: u.role,
+      }));
+    }),
+
+  // 🔹 Admin: Get specific user's Approval KPI Summary
+  getAdminUserApprovalKPISummary: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      year: z.number().optional(),
+      quarter: z.number().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, quarter } = input;
+
+      if (!userId) {
+        return { total: 0, onTime: 0, late: 0, onTimeRate: null as number | null, avgMinutes: 0 };
+      }
+
+      let dateFrom: Date | undefined;
+      let dateTo: Date | undefined;
+
+      if (year) {
+        const gregorianYear = year - 543;
+        if (quarter) {
+          const startMonth = (quarter - 1) * 3;
+          dateFrom = new Date(gregorianYear, startMonth, 1);
+          dateTo = new Date(gregorianYear, startMonth + 3, 0, 23, 59, 59);
+        } else {
+          dateFrom = new Date(gregorianYear, 0, 1);
+          dateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
+        }
+      }
+
+      const whereClause: any = { user_id: userId };
+      if (dateFrom && dateTo) {
+        whereClause.created_at = { gte: dateFrom, lte: dateTo };
+      }
+
+      const metrics = await ctx.db.approval_kpi_metric.aggregate({
+        where: whereClause,
+        _count: { id: true },
+        _avg: { duration_minutes: true },
+      });
+
+      const onTimeStats = await ctx.db.approval_kpi_metric.groupBy({
+        by: ['is_on_time'],
+        where: { ...whereClause, is_on_time: { not: null } },
+        _count: { id: true },
+      });
+
+      let onTime = 0;
+      let late = 0;
+      for (const stat of onTimeStats) {
+        if (stat.is_on_time === true) onTime = stat._count.id;
+        else if (stat.is_on_time === false) late = stat._count.id;
+      }
+
+      const totalWithSLA = onTime + late;
+      const onTimeRate = totalWithSLA > 0 ? Math.round((onTime / totalWithSLA) * 100) : null;
+
+      return {
+        total: metrics._count.id,
+        onTime,
+        late,
+        onTimeRate,
+        avgMinutes: metrics._avg.duration_minutes ? Math.round(Number(metrics._avg.duration_minutes)) : 0,
+      };
+    }),
+
+  // 🔹 Admin: Get specific user's Receive Confirm KPI Summary
+  getAdminUserReceiveConfirmKPISummary: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      year: z.number().optional(),
+      quarter: z.number().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, quarter } = input;
+
+      if (!userId) {
+        return { total: 0, onTime: 0, late: 0, onTimeRate: null as number | null, avgMinutes: 0 };
+      }
+
+      let dateFrom: Date | undefined;
+      let dateTo: Date | undefined;
+
+      if (year) {
+        const gregorianYear = year - 543;
+        if (quarter) {
+          const startMonth = (quarter - 1) * 3;
+          dateFrom = new Date(gregorianYear, startMonth, 1);
+          dateTo = new Date(gregorianYear, startMonth + 3, 0, 23, 59, 59);
+        } else {
+          dateFrom = new Date(gregorianYear, 0, 1);
+          dateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
+        }
+      }
+
+      const whereClause: any = { user_id: userId };
+      if (dateFrom && dateTo) {
+        whereClause.created_at = { gte: dateFrom, lte: dateTo };
+      }
+
+      const metrics = await ctx.db.receive_confirm_kpi_metric.aggregate({
+        where: whereClause,
+        _count: { id: true },
+        _avg: { duration_minutes: true },
+      });
+
+      const onTimeStats = await ctx.db.receive_confirm_kpi_metric.groupBy({
+        by: ['is_on_time'],
+        where: { ...whereClause, is_on_time: { not: null } },
+        _count: { id: true },
+      });
+
+      let onTime = 0;
+      let late = 0;
+      for (const stat of onTimeStats) {
+        if (stat.is_on_time === true) onTime = stat._count.id;
+        else if (stat.is_on_time === false) late = stat._count.id;
+      }
+
+      const totalWithSLA = onTime + late;
+      const onTimeRate = totalWithSLA > 0 ? Math.round((onTime / totalWithSLA) * 100) : null;
+
+      return {
+        total: metrics._count.id,
+        onTime,
+        late,
+        onTimeRate,
+        avgMinutes: metrics._avg.duration_minutes ? Math.round(Number(metrics._avg.duration_minutes)) : 0,
+      };
+    }),
+
+  // 🔹 Admin: Get specific user's Usage KPI Summary
+  getAdminUserUsageKPISummary: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      year: z.number().optional(),
+      quarter: z.number().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, quarter } = input;
+
+      if (!userId) {
+        return { totalLogins: 0, totalHours: 0, avgMinutesPerSession: 0, manualLogouts: 0, timeoutLogouts: 0 };
+      }
+
+      let dateFrom: Date | undefined;
+      let dateTo: Date | undefined;
+
+      if (year) {
+        const gregorianYear = year - 543;
+        if (quarter) {
+          const startMonth = (quarter - 1) * 3;
+          dateFrom = new Date(gregorianYear, startMonth, 1);
+          dateTo = new Date(gregorianYear, startMonth + 3, 0, 23, 59, 59);
+        } else {
+          dateFrom = new Date(gregorianYear, 0, 1);
+          dateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
+        }
+      }
+
+      const whereClause: any = { user_id: userId };
+      if (dateFrom && dateTo) {
+        whereClause.session_start = { gte: dateFrom, lte: dateTo };
+      }
+
+      const sessions = await ctx.db.session_history.findMany({
+        where: whereClause,
+        select: {
+          duration_minutes: true,
+          logout_type: true,
+        },
+      });
+
+      let totalMinutes = 0;
+      let manualLogouts = 0;
+      let timeoutLogouts = 0;
+
+      for (const s of sessions) {
+        totalMinutes += Number(s.duration_minutes);
+        if (s.logout_type === 'manual') manualLogouts++;
+        else if (s.logout_type === 'timeout') timeoutLogouts++;
+      }
+
+      return {
+        totalLogins: sessions.length,
+        totalHours: Math.round(totalMinutes / 60),
+        avgMinutesPerSession: sessions.length > 0 ? Math.round(totalMinutes / sessions.length) : 0,
+        manualLogouts,
+        timeoutLogouts,
+      };
+    }),
 });

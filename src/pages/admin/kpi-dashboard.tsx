@@ -8,9 +8,6 @@
 import { useState } from "react";
 import Head from "next/head";
 import PageGuard from "~/components/PageGuard";
-import AdminSidebar from "~/components/AdminSidebar";
-import TopBar from "~/components/TopBar";
-import { useSidebar } from "~/contexts/SidebarContext";
 import { api } from "~/utils/api";
 
 // Helper function to format minutes
@@ -42,7 +39,20 @@ const getOnTimeRateColor = (rate: number | null) => {
   return 'bg-red-100 text-red-800';
 };
 
-type TabType = 'approval' | 'receive_confirm' | 'usage' | 'sla_config';
+type TabType = 'approval' | 'receive_confirm' | 'usage' | 'individual' | 'sla_config';
+
+// Helper function to format date
+const formatDate = (date: Date | string | null): string => {
+  if (!date) return '-';
+  const d = new Date(date);
+  return d.toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 // Get current Thai year
 const getCurrentThaiYear = () => new Date().getFullYear() + 543;
@@ -51,13 +61,16 @@ const getCurrentThaiYear = () => new Date().getFullYear() + 543;
 const getCurrentQuarter = () => Math.ceil((new Date().getMonth() + 1) / 3);
 
 function KPIDashboardContent() {
-  const { isExpanded } = useSidebar();
   const [activeTab, setActiveTab] = useState<TabType>('approval');
 
   // Year/Quarter filter
   const [filterType, setFilterType] = useState<'quarter' | 'year'>('quarter');
   const [selectedYear, setSelectedYear] = useState<number>(getCurrentThaiYear());
   const [selectedQuarter, setSelectedQuarter] = useState<number>(getCurrentQuarter());
+
+  // Individual KPI State
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
   // SLA Config Form State
   const [slaForm, setSlaForm] = useState({
@@ -94,6 +107,74 @@ function KPIDashboardContent() {
     undefined,
     { enabled: activeTab === 'sla_config' }
   );
+
+  // Fetch all users for Individual KPI tab
+  const { data: allUsersData, isLoading: loadingUsers } = api.kpi.getAdminUsersList.useQuery(
+    undefined,
+    { enabled: activeTab === 'individual' }
+  );
+
+  // Get users list
+  const usersList = allUsersData || [];
+
+  // Filter users by search query
+  const filteredUsers = userSearchQuery.trim()
+    ? usersList.filter(u =>
+        u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.id.toLowerCase().includes(userSearchQuery.toLowerCase())
+      )
+    : usersList;
+
+  // Get date range for individual KPI detail queries
+  const getDateRange = () => {
+    const gregorianYear = selectedYear - 543;
+    if (filterType === 'quarter') {
+      const startMonth = (selectedQuarter - 1) * 3;
+      const dateFrom = new Date(gregorianYear, startMonth, 1);
+      const dateTo = new Date(gregorianYear, startMonth + 3, 0, 23, 59, 59);
+      return { dateFrom, dateTo };
+    } else {
+      const dateFrom = new Date(gregorianYear, 0, 1);
+      const dateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
+      return { dateFrom, dateTo };
+    }
+  };
+
+  const { dateFrom, dateTo } = getDateRange();
+
+  // Individual User KPI queries (Admin APIs)
+  const { data: individualApprovalSummary, isLoading: loadingIndApprovalSummary } = api.kpi.getAdminUserApprovalKPISummary.useQuery(
+    { userId: selectedUserId, ...queryParams },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const { data: individualReceiveSummary, isLoading: loadingIndReceiveSummary } = api.kpi.getAdminUserReceiveConfirmKPISummary.useQuery(
+    { userId: selectedUserId, ...queryParams },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const { data: individualUsageSummary, isLoading: loadingIndUsageSummary } = api.kpi.getAdminUserUsageKPISummary.useQuery(
+    { userId: selectedUserId, ...queryParams },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const { data: individualApprovalKPI, isLoading: loadingIndApproval } = api.kpi.getMyApprovalKPI.useQuery(
+    { userId: selectedUserId, dateFrom, dateTo },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const { data: individualReceiveKPI, isLoading: loadingIndReceive } = api.kpi.getMyReceiveConfirmKPI.useQuery(
+    { userId: selectedUserId, dateFrom, dateTo },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const { data: individualUsageStats, isLoading: loadingIndUsage } = api.kpi.getMyUsageStats.useQuery(
+    { userId: selectedUserId, dateFrom, dateTo },
+    { enabled: activeTab === 'individual' && !!selectedUserId }
+  );
+
+  const loadingIndividual = loadingIndApprovalSummary || loadingIndReceiveSummary || loadingIndUsageSummary ||
+                           loadingIndApproval || loadingIndReceive || loadingIndUsage;
 
   // Mutations
   const upsertSLA = api.kpi.upsertSLAConfig.useMutation({
@@ -132,6 +213,12 @@ function KPIDashboardContent() {
     });
   };
 
+  // Navigate to Individual KPI tab with selected user
+  const handleUserClick = (userId: string) => {
+    setSelectedUserId(userId);
+    setActiveTab('individual');
+  };
+
   const isLoading = loadingApproval || loadingReceive || loadingUsage || loadingSLA;
 
   // Generate year options (last 3 years)
@@ -143,14 +230,7 @@ function KPIDashboardContent() {
         <title>KPI Dashboard | Admin</title>
       </Head>
 
-      <div className="min-h-screen bg-gray-100">
-        <TopBar />
-        <div className="flex">
-          <AdminSidebar />
-          <main
-            className="flex-1 p-6 transition-all duration-300"
-            style={{ marginLeft: isExpanded ? "256px" : "64px" }}
-          >
+      <div className="min-h-screen bg-gray-100 p-6">
             {/* Header */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-800">KPI Dashboard</h1>
@@ -164,6 +244,7 @@ function KPIDashboardContent() {
                   { key: 'approval', label: 'Approval KPI', icon: '✅' },
                   { key: 'receive_confirm', label: 'Receive Confirm KPI', icon: '📦' },
                   { key: 'usage', label: 'Usage Analytics', icon: '📊' },
+                  { key: 'individual', label: 'Individual KPI', icon: '👤' },
                   { key: 'sla_config', label: 'SLA Config', icon: '⚙️' },
                 ].map((tab) => (
                   <button
@@ -297,7 +378,13 @@ function KPIDashboardContent() {
                               {approvalSummary.byUser.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                   <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
-                                    {row.userName}
+                                    <button
+                                      onClick={() => handleUserClick(row.userId)}
+                                      className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                                      title="ดู KPI รายบุคคล"
+                                    >
+                                      {row.userName}
+                                    </button>
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
                                     {row.total}
@@ -380,7 +467,13 @@ function KPIDashboardContent() {
                               {receiveSummary.byUser.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                   <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
-                                    {row.userName}
+                                    <button
+                                      onClick={() => handleUserClick(row.userId)}
+                                      className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                                      title="ดู KPI รายบุคคล"
+                                    >
+                                      {row.userName}
+                                    </button>
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
                                     {row.total}
@@ -470,7 +563,13 @@ function KPIDashboardContent() {
                               {usageSummary.byUser.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                   <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
-                                    {row.userName}
+                                    <button
+                                      onClick={() => handleUserClick(row.userId)}
+                                      className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                                      title="ดู KPI รายบุคคล"
+                                    >
+                                      {row.userName}
+                                    </button>
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
                                     {row.loginCount}
@@ -496,6 +595,280 @@ function KPIDashboardContent() {
                         <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูลในช่วงเวลานี้</div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* ===== INDIVIDUAL KPI TAB ===== */}
+                {activeTab === 'individual' && (
+                  <div className="space-y-6">
+                    {/* User Selection */}
+                    <div className="rounded-lg bg-white p-6 shadow">
+                      <h2 className="mb-4 text-lg font-semibold text-gray-800">เลือกผู้ใช้</h2>
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={userSearchQuery}
+                            onChange={(e) => setUserSearchQuery(e.target.value)}
+                            placeholder="ค้นหาชื่อผู้ใช้..."
+                            className="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <select
+                            value={selectedUserId}
+                            onChange={(e) => setSelectedUserId(e.target.value)}
+                            className="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900"
+                            disabled={loadingUsers}
+                          >
+                            <option value="">{loadingUsers ? 'กำลังโหลด...' : '-- เลือกผู้ใช้ --'}</option>
+                            {filteredUsers.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.name} [{user.role}]
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {!loadingUsers && usersList.length === 0 && (
+                        <p className="mt-2 text-sm text-gray-500">
+                          ไม่พบผู้ใช้ที่ active ในระบบ
+                        </p>
+                      )}
+                    </div>
+
+                    {selectedUserId && (
+                      <>
+                        {loadingIndividual ? (
+                          <div className="flex h-64 items-center justify-center">
+                            <div className="text-gray-500">กำลังโหลด...</div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">Approve ครั้ง</p>
+                                <p className="text-2xl font-bold text-gray-800">{individualApprovalSummary?.total ?? 0}</p>
+                              </div>
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">On-time (Approve)</p>
+                                <p className={`text-2xl font-bold ${
+                                  (individualApprovalSummary?.onTimeRate ?? 0) >= 80 ? 'text-green-600' :
+                                  (individualApprovalSummary?.onTimeRate ?? 0) >= 50 ? 'text-yellow-600' : 'text-red-600'
+                                }`}>
+                                  {individualApprovalSummary?.onTimeRate !== null && individualApprovalSummary?.onTimeRate !== undefined
+                                    ? `${individualApprovalSummary.onTimeRate}%` : '-'}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {individualApprovalSummary?.onTime ?? 0} / {(individualApprovalSummary?.onTime ?? 0) + (individualApprovalSummary?.late ?? 0)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">Receive ครั้ง</p>
+                                <p className="text-2xl font-bold text-gray-800">{individualReceiveSummary?.total ?? 0}</p>
+                              </div>
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">On-time (Receive)</p>
+                                <p className={`text-2xl font-bold ${
+                                  (individualReceiveSummary?.onTimeRate ?? 0) >= 80 ? 'text-green-600' :
+                                  (individualReceiveSummary?.onTimeRate ?? 0) >= 50 ? 'text-yellow-600' : 'text-red-600'
+                                }`}>
+                                  {individualReceiveSummary?.onTimeRate !== null && individualReceiveSummary?.onTimeRate !== undefined
+                                    ? `${individualReceiveSummary.onTimeRate}%` : '-'}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {individualReceiveSummary?.onTime ?? 0} / {(individualReceiveSummary?.onTime ?? 0) + (individualReceiveSummary?.late ?? 0)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">เข้าใช้งาน</p>
+                                <p className="text-2xl font-bold text-indigo-600">{individualUsageSummary?.totalLogins ?? 0}</p>
+                                <p className="text-xs text-gray-400 mt-1">ครั้ง</p>
+                              </div>
+                              <div className="rounded-lg bg-white p-4 shadow">
+                                <p className="text-sm text-gray-500">เวลารวม</p>
+                                <p className="text-2xl font-bold text-gray-800">{individualUsageSummary?.totalHours ?? 0}</p>
+                                <p className="text-xs text-gray-400 mt-1">ชั่วโมง</p>
+                              </div>
+                            </div>
+
+                            {/* Usage Stats */}
+                            <div className="rounded-lg bg-white p-6 shadow">
+                              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <span>🕐</span> สถิติการเข้าใช้งาน
+                              </h2>
+                              {individualUsageStats && individualUsageStats.summary.totalSessions > 0 ? (
+                                <>
+                                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+                                    <div className="rounded-lg bg-indigo-50 p-4">
+                                      <div className="text-sm text-indigo-600">จำนวนครั้งเข้าใช้</div>
+                                      <div className="mt-1 text-2xl font-bold text-indigo-700">{individualUsageStats.summary.totalSessions}</div>
+                                    </div>
+                                    <div className="rounded-lg bg-blue-50 p-4">
+                                      <div className="text-sm text-blue-600">เวลาใช้งานรวม</div>
+                                      <div className="mt-1 text-2xl font-bold text-blue-700">{individualUsageStats.summary.totalHours} ชม.</div>
+                                    </div>
+                                    <div className="rounded-lg bg-purple-50 p-4">
+                                      <div className="text-sm text-purple-600">เฉลี่ยต่อครั้ง</div>
+                                      <div className="mt-1 text-2xl font-bold text-purple-700">{individualUsageStats.summary.avgMinutesPerSession} นาที</div>
+                                    </div>
+                                    <div className="rounded-lg bg-gray-50 p-4">
+                                      <div className="text-sm text-gray-600">วิธีออกจากระบบ</div>
+                                      <div className="mt-1 flex items-baseline gap-2">
+                                        <span className="text-lg font-bold text-green-600">{individualUsageStats.summary.manualLogouts}</span>
+                                        <span className="text-gray-400">/</span>
+                                        <span className="text-lg font-bold text-yellow-600">{individualUsageStats.summary.timeoutLogouts}</span>
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">กดออก / หมดเวลา</div>
+                                    </div>
+                                  </div>
+
+                                  {individualUsageStats.recentSessions.length > 0 && (
+                                    <div>
+                                      <h3 className="text-sm font-medium text-gray-700 mb-3">ประวัติการเข้าใช้งานล่าสุด</h3>
+                                      <div className="max-h-48 overflow-y-auto">
+                                        <div className="space-y-2">
+                                          {individualUsageStats.recentSessions.slice(0, 10).map((session, idx) => (
+                                            <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                                              <div className="flex items-center gap-3">
+                                                <span className="text-gray-400">{idx + 1}.</span>
+                                                <span className="text-gray-900">{formatDate(session.sessionStart)}</span>
+                                              </div>
+                                              <div className="flex items-center gap-4">
+                                                <span className="text-gray-700">{session.durationMinutes} นาที</span>
+                                                <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                                  session.logoutType === 'manual' ? 'bg-green-100 text-green-700' :
+                                                  session.logoutType === 'timeout' ? 'bg-yellow-100 text-yellow-700' :
+                                                  'bg-red-100 text-red-700'
+                                                }`}>
+                                                  {session.logoutType === 'manual' ? 'กดออก' :
+                                                   session.logoutType === 'timeout' ? 'หมดเวลา' :
+                                                   session.logoutType}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูลการเข้าใช้งานในช่วงเวลานี้</div>
+                              )}
+                            </div>
+
+                            {/* Approval KPI by Stage */}
+                            <div className="rounded-lg bg-white p-6 shadow">
+                              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <span>✅</span> KPI การอนุมัติ (แยกตามขั้นตอน)
+                              </h2>
+                              {individualApprovalKPI && Object.keys(individualApprovalKPI.stages).length > 0 ? (
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นตอน</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวนครั้ง</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">On-time Rate</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 bg-white">
+                                      {individualApprovalKPI.stageOrder.map((stage) => {
+                                        const stats = individualApprovalKPI.stages[stage];
+                                        if (!stats) return null;
+                                        return (
+                                          <tr key={stage} className="hover:bg-gray-50">
+                                            <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                                              {individualApprovalKPI.stageNames[stage as keyof typeof individualApprovalKPI.stageNames]}
+                                            </td>
+                                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
+                                              {stats.count}
+                                            </td>
+                                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
+                                              {formatDuration(stats.avgMinutes)}
+                                            </td>
+                                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">
+                                              {stats.onTimeCount}
+                                            </td>
+                                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">
+                                              {stats.lateCount}
+                                            </td>
+                                            <td className="whitespace-nowrap px-4 py-3 text-center">
+                                              {stats.onTimeRate !== null ? (
+                                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(stats.onTimeRate)}`}>
+                                                  {stats.onTimeRate}%
+                                                </span>
+                                              ) : (
+                                                <span className="text-gray-400">-</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การอนุมัติในช่วงเวลานี้</div>
+                              )}
+                            </div>
+
+                            {/* Receive Confirm KPI */}
+                            <div className="rounded-lg bg-white p-6 shadow">
+                              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <span>📦</span> KPI การยืนยันรับของ
+                              </h2>
+                              {individualReceiveKPI && individualReceiveKPI.totalCount > 0 ? (
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                  <div className="rounded-lg bg-gray-50 p-4">
+                                    <div className="text-sm text-gray-500">จำนวนครั้งทั้งหมด</div>
+                                    <div className="mt-1 text-2xl font-bold text-gray-900">{individualReceiveKPI.totalCount}</div>
+                                  </div>
+                                  <div className="rounded-lg bg-blue-50 p-4">
+                                    <div className="text-sm text-blue-600">เวลาเฉลี่ย</div>
+                                    <div className="mt-1 text-2xl font-bold text-blue-700">
+                                      {formatDuration(individualReceiveKPI.avgMinutes)}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg bg-green-50 p-4">
+                                    <div className="text-sm text-green-600">On-time Rate</div>
+                                    <div className="mt-1 text-2xl font-bold text-green-700">
+                                      {individualReceiveKPI.onTimeRate !== null ? `${individualReceiveKPI.onTimeRate}%` : '-'}
+                                    </div>
+                                    <div className="text-xs text-green-600 mt-1">
+                                      {individualReceiveKPI.onTimeCount} ตรงเวลา / {individualReceiveKPI.lateCount} เกินเวลา
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg bg-purple-50 p-4">
+                                    <div className="text-sm text-purple-600">สถานะการยืนยัน</div>
+                                    <div className="mt-1 flex items-baseline gap-2">
+                                      <span className="text-xl font-bold text-green-600">{individualReceiveKPI.confirmedCount}</span>
+                                      <span className="text-gray-400">/</span>
+                                      <span className="text-xl font-bold text-red-600">{individualReceiveKPI.rejectedCount}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">ยืนยัน / ปฏิเสธ</div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การยืนยันรับของในช่วงเวลานี้</div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    {!selectedUserId && (
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-6 text-center">
+                        <span className="text-4xl">👤</span>
+                        <p className="mt-2 text-blue-700">กรุณาเลือกผู้ใช้เพื่อดู KPI รายบุคคล</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -646,8 +1019,6 @@ function KPIDashboardContent() {
                 )}
               </>
             )}
-          </main>
-        </div>
       </div>
     </PageGuard>
   );

@@ -357,14 +357,26 @@ export interface AuditLogData {
 }
 
 /**
+ * Get current Thailand time as Date object
+ * Thailand is UTC+7
+ */
+function getThailandNow(): Date {
+  return new Date();
+}
+
+/**
  * Create an audit log entry
  * Uses fire-and-forget pattern - errors are logged but don't throw
+ * Timestamp is stored as UTC and converted to Thailand time on display
  */
 export async function createAuditLog(
   db: PrismaClient,
   data: AuditLogData
 ): Promise<void> {
   try {
+    // Use current UTC time - will be converted to Thailand time on display
+    const now = getThailandNow();
+
     await db.activity_trail.create({
       data: {
         user_id: data.userId ?? null,
@@ -381,6 +393,7 @@ export async function createAuditLog(
         metadata: data.metadata as Prisma.InputJsonValue | undefined,
         ip_address: data.ipAddress ?? null,
         computer_name: data.computerName ?? null,
+        created_at: now,
       },
     });
   } catch (error) {

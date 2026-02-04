@@ -87,6 +87,7 @@ export const authConfig = {
               provider: account?.provider,
               isNewUser,
             },
+            created_at: new Date(),
           },
         });
         console.log('[AUTH EVENT] ✅ LOGIN activity logged, ID:', result.id);
@@ -118,6 +119,7 @@ export const authConfig = {
               ip_address: 'unknown', // Will be updated by client-side call
               action: 'LOGOUT',
               description: 'ออกจากระบบ',
+              created_at: new Date(),
             },
           });
           console.log('[AUTH EVENT] ✅ LOGOUT activity logged, ID:', result.id);

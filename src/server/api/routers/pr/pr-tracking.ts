@@ -38,6 +38,7 @@ export const prTrackingRouter = createTRPCRouter({
             pr_no: input.prNo,
             tracking_id: tracking.id,
             metadata: { urgency_level: input.urgencyLevel },
+            created_at: new Date(),
           },
         });
       } catch (error) {
@@ -203,6 +204,7 @@ export const prTrackingRouter = createTRPCRouter({
             pr_no: input.prNo,
             tracking_id: input.trackingId,
             metadata: { response_id: response.id },
+            created_at: new Date(),
           },
         });
       } catch (error) {

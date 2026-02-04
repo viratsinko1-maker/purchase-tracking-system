@@ -45,6 +45,7 @@ export const activityTrailRouter = createTRPCRouter({
           po_no: input.po_no,
           tracking_id: input.tracking_id,
           metadata: input.metadata ?? undefined,
+          created_at: new Date(),
         },
       });
 

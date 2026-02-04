@@ -60,8 +60,6 @@ export default async function handler(
     // Log REGISTER activity
     try {
       const ipAddress = getClientIp(req);
-      const now = new Date();
-      const thailandTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
 
       await db.activity_trail.create({
         data: {
@@ -75,7 +73,7 @@ export default async function handler(
             role: newUser.role,
             isActive: newUser.isActive,
           },
-          created_at: thailandTime,
+          created_at: new Date(),
         },
       });
       console.log('[REGISTER API] ✅ New user registered:', newUser.username, 'IP:', ipAddress);

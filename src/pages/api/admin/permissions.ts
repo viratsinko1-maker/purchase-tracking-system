@@ -231,6 +231,7 @@ async function handlePost(
           record_id: roleId.toString(),
           description: `Updated permissions for role: ${role.name}`,
           new_values: permissions,
+          created_at: new Date(),
         },
       });
     } catch {

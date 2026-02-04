@@ -21,6 +21,23 @@ interface AuditTrail {
   metadata: Record<string, unknown> | null;
   admin_note: string | null;
   created_at: string;
+  created_at_epoch: number | null;
+  created_at_thai: string | null;
+  computer_name: string | null;
+}
+
+/**
+ * Get date range for current month
+ */
+function getDefaultDateRange() {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  return {
+    start: firstDay.toISOString().slice(0, 10),
+    end: lastDay.toISOString().slice(0, 10),
+  };
 }
 
 function AuditTrailContent() {
@@ -32,19 +49,7 @@ function AuditTrailContent() {
   const [actionFilter, setActionFilter] = useState<string>("");
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
-  // Get first and last day of current month
-  const getDefaultDates = () => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    return {
-      start: firstDay.toISOString().slice(0, 10),
-      end: lastDay.toISOString().slice(0, 10),
-    };
-  };
-
-  const defaultDates = getDefaultDates();
+  const defaultDates = getDefaultDateRange();
   const [startDate, setStartDate] = useState(defaultDates.start);
   const [endDate, setEndDate] = useState(defaultDates.end);
 
@@ -54,15 +59,14 @@ function AuditTrailContent() {
       setLoading(true);
       setError("");
 
-      const startDateTime = new Date(startDate);
-      startDateTime.setHours(0, 0, 0, 0);
-
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
+      // Send dates with Thailand timezone offset (+07:00)
+      const startDateTime = new Date(`${startDate}T00:00:00+07:00`);
+      const endDateTime = new Date(`${endDate}T23:59:59+07:00`);
 
       const params = new URLSearchParams({
         startDate: startDateTime.toISOString(),
         endDate: endDateTime.toISOString(),
+        _t: Date.now().toString(), // Cache buster
       });
 
       const response = await authFetch(`/api/admin/audit-trail?${params.toString()}`);
@@ -122,26 +126,6 @@ function AuditTrailContent() {
     });
   };
 
-  const formatDateTime = (dateString: string, action: string) => {
-    const date = new Date(dateString);
-    let adjustedDate: Date;
-
-    if (action === 'LOGIN' || action === 'LOGOUT') {
-      adjustedDate = new Date(date.getTime() - (7 * 60 * 60 * 1000));
-    } else {
-      adjustedDate = date;
-    }
-
-    return adjustedDate.toLocaleString('th-TH', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
-
   const getActionColor = (action: string) => {
     return ACTION_COLORS[action] || "bg-gray-100 text-gray-800";
   };
@@ -170,7 +154,7 @@ function AuditTrailContent() {
           <div className="mb-6">
             <div className="mb-4">
               <h1 className="text-3xl font-bold text-gray-800">Audit Trail</h1>
-              <p className="text-sm text-gray-600 mt-1">ประวัติการเปลี่ยนแปลงข้อมูลในระบบ</p>
+              <p className="text-sm text-gray-600 mt-1">ประวัติการเปลี่ยนแปลงข้อมูลในระบบ (เวลาประเทศไทย)</p>
             </div>
 
             {/* Filters */}
@@ -233,7 +217,7 @@ function AuditTrailContent() {
                     disabled={loading}
                     className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:bg-gray-400"
                   >
-                    {loading ? "กำลังโหลด..." : "🔄 Refresh"}
+                    {loading ? "กำลังโหลด..." : "ค้นหา"}
                   </button>
                 </div>
               </div>
@@ -266,7 +250,7 @@ function AuditTrailContent() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      วันเวลา
+                      วันเวลา (ไทย)
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                       User
@@ -278,7 +262,7 @@ function AuditTrailContent() {
                       Description
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      IP
+                      IP / Computer
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                       Details
@@ -307,7 +291,7 @@ function AuditTrailContent() {
                         <>
                           <tr key={activity.id} className="hover:bg-gray-50">
                             <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
-                              {formatDateTime(activity.created_at, activity.action)}
+                              {activity.created_at_thai || "-"}
                             </td>
                             <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900 font-medium">
                               {activity.user_name || activity.user_id || "-"}
@@ -326,7 +310,10 @@ function AuditTrailContent() {
                               </div>
                             </td>
                             <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">
-                              {activity.ip_address || "-"}
+                              <div>{activity.ip_address || "-"}</div>
+                              {activity.computer_name && (
+                                <div className="text-[10px] text-gray-400">{activity.computer_name}</div>
+                              )}
                             </td>
                             <td className="whitespace-nowrap px-4 py-3 text-sm">
                               {hasDetails && (
@@ -334,7 +321,7 @@ function AuditTrailContent() {
                                   onClick={() => toggleRowExpand(activity.id)}
                                   className="text-blue-600 hover:text-blue-800 text-xs"
                                 >
-                                  {isExpanded ? "▼ ซ่อน" : "▶ ดูรายละเอียด"}
+                                  {isExpanded ? "ซ่อน" : "ดูรายละเอียด"}
                                 </button>
                               )}
                             </td>
