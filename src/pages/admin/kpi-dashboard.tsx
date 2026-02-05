@@ -60,6 +60,70 @@ const getCurrentThaiYear = () => new Date().getFullYear() + 543;
 // Get current quarter (1-4)
 const getCurrentQuarter = () => Math.ceil((new Date().getMonth() + 1) / 3);
 
+// Get current month (1-12)
+const getCurrentMonth = () => new Date().getMonth() + 1;
+
+// Get current week of year (matches getWeeksInYear calculation)
+const getWeekOfYear = (date: Date = new Date()) => {
+  const year = date.getFullYear();
+  const startOfYear = new Date(year, 0, 1);
+  // Calculate days since start of year
+  const diffTime = date.getTime() - startOfYear.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  // Week number = floor(days / 7) + 1
+  return Math.floor(diffDays / 7) + 1;
+};
+
+// Generate weeks for a year (Thai year)
+const getWeeksInYear = (thaiYear: number) => {
+  const gregorianYear = thaiYear - 543;
+  const weeks: { week: number; start: Date; end: Date; label: string }[] = [];
+  const startOfYear = new Date(gregorianYear, 0, 1);
+  const endOfYear = new Date(gregorianYear, 11, 31);
+
+  let currentDate = new Date(startOfYear);
+  let weekNum = 1;
+
+  while (currentDate <= endOfYear && weekNum <= 53) {
+    const weekStart = new Date(currentDate);
+    const weekEnd = new Date(currentDate);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    // Clamp to end of year
+    if (weekEnd > endOfYear) {
+      weekEnd.setTime(endOfYear.getTime());
+    }
+
+    weeks.push({
+      week: weekNum,
+      start: weekStart,
+      end: weekEnd,
+      label: `สัปดาห์ ${weekNum} (${weekStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`,
+    });
+
+    currentDate.setDate(currentDate.getDate() + 7);
+    weekNum++;
+  }
+
+  return weeks;
+};
+
+// Month names
+const monthNames = [
+  { value: 1, label: 'มกราคม' },
+  { value: 2, label: 'กุมภาพันธ์' },
+  { value: 3, label: 'มีนาคม' },
+  { value: 4, label: 'เมษายน' },
+  { value: 5, label: 'พฤษภาคม' },
+  { value: 6, label: 'มิถุนายน' },
+  { value: 7, label: 'กรกฎาคม' },
+  { value: 8, label: 'สิงหาคม' },
+  { value: 9, label: 'กันยายน' },
+  { value: 10, label: 'ตุลาคม' },
+  { value: 11, label: 'พฤศจิกายน' },
+  { value: 12, label: 'ธันวาคม' },
+];
+
 function KPIDashboardContent() {
   const [activeTab, setActiveTab] = useState<TabType>('approval');
 
@@ -71,6 +135,12 @@ function KPIDashboardContent() {
   // Individual KPI State
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  // Session period filter (for Individual Usage Stats)
+  const [sessionPeriodType, setSessionPeriodType] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
+  const [sessionYear, setSessionYear] = useState<number>(getCurrentThaiYear());
+  const [sessionWeek, setSessionWeek] = useState<number>(getWeekOfYear());
+  const [sessionMonth, setSessionMonth] = useState<number>(getCurrentMonth());
 
   // SLA Config Form State
   const [slaForm, setSlaForm] = useState({
@@ -142,6 +212,38 @@ function KPIDashboardContent() {
 
   const { dateFrom, dateTo } = getDateRange();
 
+  // Get date range for session period filter
+  const getSessionDateRange = () => {
+    const gregorianYear = sessionYear - 543;
+    if (sessionPeriodType === 'weekly') {
+      const weeks = getWeeksInYear(sessionYear);
+      const week = weeks.find(w => w.week === sessionWeek);
+      if (week) {
+        return {
+          sessionDateFrom: week.start,
+          sessionDateTo: new Date(week.end.getFullYear(), week.end.getMonth(), week.end.getDate(), 23, 59, 59),
+        };
+      }
+      // Fallback to first week
+      return {
+        sessionDateFrom: new Date(gregorianYear, 0, 1),
+        sessionDateTo: new Date(gregorianYear, 0, 7, 23, 59, 59),
+      };
+    } else if (sessionPeriodType === 'monthly') {
+      const sessionDateFrom = new Date(gregorianYear, sessionMonth - 1, 1);
+      const sessionDateTo = new Date(gregorianYear, sessionMonth, 0, 23, 59, 59);
+      return { sessionDateFrom, sessionDateTo };
+    } else {
+      // yearly
+      const sessionDateFrom = new Date(gregorianYear, 0, 1);
+      const sessionDateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
+      return { sessionDateFrom, sessionDateTo };
+    }
+  };
+
+  const { sessionDateFrom, sessionDateTo } = getSessionDateRange();
+  const weeksInYear = getWeeksInYear(sessionYear);
+
   // Individual User KPI queries (Admin APIs)
   const { data: individualApprovalSummary, isLoading: loadingIndApprovalSummary } = api.kpi.getAdminUserApprovalKPISummary.useQuery(
     { userId: selectedUserId, ...queryParams },
@@ -169,7 +271,7 @@ function KPIDashboardContent() {
   );
 
   const { data: individualUsageStats, isLoading: loadingIndUsage } = api.kpi.getMyUsageStats.useQuery(
-    { userId: selectedUserId, dateFrom, dateTo },
+    { userId: selectedUserId, dateFrom: sessionDateFrom, dateTo: sessionDateTo },
     { enabled: activeTab === 'individual' && !!selectedUserId }
   );
 
@@ -695,9 +797,72 @@ function KPIDashboardContent() {
 
                             {/* Usage Stats */}
                             <div className="rounded-lg bg-white p-6 shadow">
-                              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
-                                <span>🕐</span> สถิติการเข้าใช้งาน
-                              </h2>
+                              <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <span>🕐</span> สถิติการเข้าใช้งาน
+                                </h2>
+
+                                {/* Session Period Filter */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {/* Period Type Buttons */}
+                                  <div className="flex gap-1">
+                                    {[
+                                      { key: 'weekly', label: 'รายสัปดาห์' },
+                                      { key: 'monthly', label: 'รายเดือน' },
+                                      { key: 'yearly', label: 'รายปี' },
+                                    ].map((pt) => (
+                                      <button
+                                        key={pt.key}
+                                        onClick={() => setSessionPeriodType(pt.key as 'weekly' | 'monthly' | 'yearly')}
+                                        className={`rounded px-3 py-1 text-xs font-medium transition ${
+                                          sessionPeriodType === pt.key
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                      >
+                                        {pt.label}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {/* Year Select */}
+                                  <select
+                                    value={sessionYear}
+                                    onChange={(e) => setSessionYear(Number(e.target.value))}
+                                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                                  >
+                                    {yearOptions.map((y) => (
+                                      <option key={y} value={y}>ปี {y}</option>
+                                    ))}
+                                  </select>
+
+                                  {/* Week Select (only for weekly) */}
+                                  {sessionPeriodType === 'weekly' && (
+                                    <select
+                                      value={sessionWeek}
+                                      onChange={(e) => setSessionWeek(Number(e.target.value))}
+                                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                                    >
+                                      {weeksInYear.map((w) => (
+                                        <option key={w.week} value={w.week}>{w.label}</option>
+                                      ))}
+                                    </select>
+                                  )}
+
+                                  {/* Month Select (only for monthly) */}
+                                  {sessionPeriodType === 'monthly' && (
+                                    <select
+                                      value={sessionMonth}
+                                      onChange={(e) => setSessionMonth(Number(e.target.value))}
+                                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                                    >
+                                      {monthNames.map((m) => (
+                                        <option key={m.value} value={m.value}>{m.label}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              </div>
                               {individualUsageStats && individualUsageStats.summary.totalSessions > 0 ? (
                                 <>
                                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
@@ -733,7 +898,11 @@ function KPIDashboardContent() {
                                             <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
                                               <div className="flex items-center gap-3">
                                                 <span className="text-gray-400">{idx + 1}.</span>
-                                                <span className="text-gray-900">{formatDate(session.sessionStart)}</span>
+                                                <span className="text-gray-900">
+                                                  {formatDate(session.sessionStart)}
+                                                  <span className="text-gray-400 mx-1">→</span>
+                                                  {session.sessionEnd ? formatDate(session.sessionEnd) : '-'}
+                                                </span>
                                               </div>
                                               <div className="flex items-center gap-4">
                                                 <span className="text-gray-700">{session.durationMinutes} นาที</span>

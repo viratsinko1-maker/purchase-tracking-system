@@ -582,22 +582,24 @@ model tracking_response_log {
 }
 
 model user_production {
-  id             String    @id
-  email          String    @unique
-  userId         String?   @unique
-  username       String?
-  name           String?
-  password       String?
-  role           String    @default("PR") @db.VarChar(20)
-  isActive       Boolean   @default(true)
-  sourceId       String?
-  telegramChatId String?
-  lastSyncAt     DateTime? @db.Timestamp(6)
-  createdAt      DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt      DateTime  @db.Timestamp(6)
+  id              String    @id
+  email           String    @unique
+  userId          String?   @unique
+  username        String?
+  name            String?
+  password        String?
+  role            String    @default("PR") @db.VarChar(20)
+  isActive        Boolean   @default(true)
+  sourceId        String?
+  telegramChatId  String?
+  linked_req_name String?   @db.VarChar(255) // Map กับ pr_master.req_name สำหรับ notification
+  lastSyncAt      DateTime? @db.Timestamp(6)
+  createdAt       DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime  @db.Timestamp(6)
 
   @@index([email])
   @@index([isActive])
+  @@index([linked_req_name])
 }
 
 /// System Role - จัดการ Role และลำดับความสำคัญ
@@ -1068,4 +1070,20 @@ model receive_confirm_kpi_metric {
   @@index([created_at], map: "idx_receive_confirm_kpi_created_at")
   @@index([is_on_time], map: "idx_receive_confirm_kpi_is_on_time")
   @@index([batch_key], map: "idx_receive_confirm_kpi_batch_key")
+}
+
+/// User Notification - แจ้งเตือนใน TopBar สำหรับ user
+model user_notification {
+  id          Int       @id @default(autoincrement())
+  user_id     String    @db.VarChar(255)                    // FK to user_production.id
+  type        String    @db.VarChar(50)                     // "receive_confirmed" | "tracking_response" | etc.
+  title       String    @db.VarChar(255)
+  message     String?
+  pr_doc_num  Int?                                          // Optional reference to PR
+  is_read     Boolean   @default(false)
+  created_at  DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([user_id], map: "idx_user_notification_user_id")
+  @@index([is_read], map: "idx_user_notification_is_read")
+  @@index([created_at(sort: Desc)], map: "idx_user_notification_created_at")
 }

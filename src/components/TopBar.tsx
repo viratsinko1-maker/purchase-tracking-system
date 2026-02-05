@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
 import { useRouter } from "next/router";
@@ -9,6 +9,7 @@ export default function TopBar() {
   const { user, logout } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -16,12 +17,16 @@ export default function TopBar() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
 
-  // Close user menu when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
       }
     };
 
@@ -29,8 +34,8 @@ export default function TopBar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Query pending approvals count
-  const { data: pendingCount = 0 } = api.pr.getMyPendingApprovalsCount.useQuery(
+  // Query pending approvals list (not just count)
+  const { data: pendingApprovals = [] } = api.pr.getMyPendingApprovals.useQuery(
     {
       userId: user?.id || '',
       userName: user?.name || undefined,
@@ -38,6 +43,74 @@ export default function TopBar() {
     },
     { enabled: !!user?.id, refetchInterval: 30000 } // Refetch every 30 seconds
   );
+
+  // Query user notifications (receive confirmed, etc.)
+  const { data: myNotifications = [] } = api.notification.getMyNotifications.useQuery(
+    {
+      userId: user?.id || '',
+      limit: 20,
+      unreadOnly: false,
+    },
+    { enabled: !!user?.id, refetchInterval: 30000 }
+  );
+
+  const markAsReadMutation = api.notification.markAsRead.useMutation();
+
+  // รวม pending approvals กับ notifications
+  type NotificationItem = {
+    id: string;
+    type: 'approval' | 'goods_ready' | 'qa_answered';
+    title: string;
+    subtitle?: string;
+    prNo?: number;
+    createdAt: Date | null;
+    isRead: boolean;
+    notificationId?: number;
+  };
+
+  const allNotifications = useMemo(() => {
+    const notifications: NotificationItem[] = [];
+
+    // Add pending approvals (always unread)
+    pendingApprovals.forEach(approval => {
+      notifications.push({
+        id: `approval-${approval.prNo}`,
+        type: 'approval',
+        title: `PR #${approval.prNo}`,
+        subtitle: `รอ: ${approval.stageName}`,
+        prNo: approval.prNo,
+        createdAt: approval.createdAt ? new Date(approval.createdAt) : null,
+        isRead: false,
+      });
+    });
+
+    // Add notifications (goods_ready, qa_answered, etc.)
+    myNotifications.forEach(notif => {
+      // Map type จาก database ไป type ที่ใช้ใน frontend
+      const notifType = notif.type === 'qa_answered' ? 'qa_answered' : 'goods_ready';
+      notifications.push({
+        id: `notif-${notif.id}`,
+        type: notifType,
+        title: notif.title,
+        subtitle: notif.message || undefined,
+        prNo: notif.pr_doc_num || undefined,
+        createdAt: notif.created_at ? new Date(notif.created_at) : null,
+        isRead: notif.is_read,
+        notificationId: notif.id,
+      });
+    });
+
+    // Sort by date (newest first)
+    return notifications.sort((a, b) => {
+      if (!a.createdAt) return 1;
+      if (!b.createdAt) return -1;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+  }, [pendingApprovals, myNotifications]);
+
+  // นับ unread (approval นับทุกตัว + notification ที่ยังไม่อ่าน)
+  const unreadCount = allNotifications.filter(n => !n.isRead).length;
+  const pendingCount = pendingApprovals.length;
 
   if (!user) {
     return null;
@@ -114,41 +187,131 @@ export default function TopBar() {
     setSuccess("");
   };
 
-  // Navigate to PR Approval page
+  // Toggle notification dropdown
   const handleNotificationClick = () => {
-    void router.push('/pr-approval');
+    setIsNotificationOpen(!isNotificationOpen);
+  };
+
+  // Navigate to PR page and mark notification as read
+  const handleItemClick = (item: NotificationItem) => {
+    setIsNotificationOpen(false);
+
+    // Mark as read if it's a notification (not approval)
+    if (item.notificationId && !item.isRead) {
+      markAsReadMutation.mutate({ notificationIds: [item.notificationId] });
+    }
+
+    // Navigate based on type
+    if (item.prNo) {
+      if (item.type === 'approval') {
+        void router.push(`/pr-approval?prNo=${item.prNo}`);
+      } else if (item.type === 'goods_ready') {
+        void router.push(`/receive-good`);
+      } else {
+        void router.push(`/pr-overview?prNo=${item.prNo}`);
+      }
+    }
   };
 
   return (
     <>
       <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md">
         <div className="container mx-auto flex items-center justify-end gap-4 px-4 py-3">
-          {/* Notification Bell - Navigate to /pr-approval */}
-          <button
-            onClick={handleNotificationClick}
-            className="relative rounded-full bg-white/20 p-2 text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
-            title={`รอการอนุมัติของฉัน (${pendingCount} รายการ)`}
-          >
-            <svg
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
+          {/* Notification Bell - Dropdown */}
+          <div className="relative" ref={notificationRef}>
+            <button
+              onClick={handleNotificationClick}
+              className="relative rounded-full bg-white/20 p-2 text-white transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-600"
+              title={`การแจ้งเตือน (${unreadCount} รายการ)`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-            {/* Badge */}
-            {pendingCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                {pendingCount > 99 ? '99+' : pendingCount}
-              </span>
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+              {/* Badge */}
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown */}
+            {isNotificationOpen && (
+              <div className="absolute right-0 mt-2 w-80 origin-top-right rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <span className="font-semibold text-gray-900">การแจ้งเตือน</span>
+                  {unreadCount > 0 && (
+                    <span className="ml-2 text-sm text-gray-500">({unreadCount} รายการ)</span>
+                  )}
+                </div>
+
+                {/* List */}
+                <div className="max-h-80 overflow-y-auto">
+                  {allNotifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-gray-500">
+                      <svg className="mx-auto h-12 w-12 text-gray-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      ไม่มีรายการรอดำเนินการ
+                    </div>
+                  ) : (
+                    allNotifications.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => handleItemClick(item)}
+                        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition ${
+                          !item.isRead ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              {item.type === 'approval' ? (
+                                <span className="text-orange-500 text-sm">🔔</span>
+                              ) : item.type === 'qa_answered' ? (
+                                <span className="text-blue-500 text-sm">💬</span>
+                              ) : (
+                                <span className="text-green-500 text-sm">📦</span>
+                              )}
+                              <span className="font-medium text-gray-900">{item.title}</span>
+                            </div>
+                            {item.subtitle && (
+                              <div className={`text-xs mt-0.5 truncate ${
+                                item.type === 'approval' ? 'text-orange-600' :
+                                item.type === 'qa_answered' ? 'text-blue-600' : 'text-gray-500'
+                              }`}>
+                                {item.subtitle}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            {!item.isRead && (
+                              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                            )}
+                            <svg className="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+              </div>
             )}
-          </button>
+          </div>
 
           {/* User Menu Dropdown */}
           <div className="relative" ref={userMenuRef}>

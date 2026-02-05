@@ -46,7 +46,7 @@ export const ELEVATED_ROLES = ['Admin', 'Approval'] as const;
 // PROTECTED TABLES - Registry ของ Tables/Actions ทั้งหมด (58 items)
 // =====================================================
 
-export type PermissionCategory = 'pr_tracking' | 'pr_qa' | 'pr_approval' | 'receive_good' | 'po_tracking' | 'w_series' | 'my_kpi' | 'admin_users' | 'admin_roles' | 'admin_permissions' | 'admin_audit' | 'admin_sync' | 'admin_workflow' | 'admin_kpi' | 'admin_usage';
+export type PermissionCategory = 'pr_tracking' | 'pr_qa' | 'pr_approval' | 'receive_good' | 'po_tracking' | 'w_series' | 'my_kpi' | 'admin_users' | 'admin_roles' | 'admin_permissions' | 'admin_audit' | 'admin_sync' | 'admin_workflow' | 'admin_kpi';
 
 export interface TableMetadata {
   friendlyName: string;      // ชื่อภาษาไทย
@@ -507,15 +507,6 @@ export const PROTECTED_TABLES: Record<string, TableMetadata> = {
     displayOrder: 3,
   },
 
-  // =====================================================
-  // 15. ADMIN - สถิติการใช้งาน (1 item)
-  // =====================================================
-  'admin_usage.read': {
-    friendlyName: 'ดูสถิติการใช้งาน',
-    category: 'admin_usage',
-    description: 'เข้าถึงหน้าสถิติการใช้งานระบบ',
-    displayOrder: 1,
-  },
 } as const;
 
 // =====================================================
@@ -537,7 +528,6 @@ export const CATEGORY_LABELS: Record<PermissionCategory, string> = {
   'admin_sync': 'ประวัติ Sync',
   'admin_workflow': 'Workflow/แผนก',
   'admin_kpi': 'KPI Dashboard (Admin)',
-  'admin_usage': 'สถิติการใช้งาน',
 };
 
 // =====================================================
@@ -575,7 +565,6 @@ export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   '/admin/attachment-sync-history': { table: 'admin_sync_attach', action: 'read' },
   '/admin/workflow': { table: 'admin_workflow', action: 'read' },
   '/admin/kpi-dashboard': { table: 'admin_kpi', action: 'read' },
-  '/admin/usage-analytics': { table: 'admin_usage', action: 'read' },
 } as const;
 
 // =====================================================

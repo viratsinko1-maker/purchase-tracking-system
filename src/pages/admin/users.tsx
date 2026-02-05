@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import Head from "next/head";
 import { useAuth } from "~/hooks/useAuth";
 import { authFetch } from "~/lib/authFetch";
+import { api } from "~/utils/api";
 import PageGuard from "~/components/PageGuard";
 import CanAccess from "~/components/CanAccess";
 import { useMultipleActionPermissions } from "~/hooks/usePermission";
@@ -27,6 +28,7 @@ interface UserProduction {
   isActive: boolean;
   sourceId: string | null;
   telegramChatId: string | null;
+  linked_req_name: string | null;
   lastSyncAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -96,7 +98,27 @@ function AdminUsersContent() {
     role: "PR",
     isActive: true,
     telegramChatId: "",
+    linkedReqName: "",
   });
+
+  // Query available req names for dropdown (only when editing user production)
+  const { data: availableReqNames = [], refetch: refetchReqNames } = api.notification.getAvailableReqNames.useQuery(
+    { currentUserId: editingUserProduction?.id },
+    { enabled: isModalOpen && !!editingUserProduction }
+  );
+
+  // Searchable dropdown state for linked_req_name
+  const [reqNameSearch, setReqNameSearch] = useState("");
+  const [isReqNameDropdownOpen, setIsReqNameDropdownOpen] = useState(false);
+
+  // Filter req names based on search
+  const filteredReqNames = useMemo(() => {
+    if (!reqNameSearch.trim()) return availableReqNames;
+    const searchLower = reqNameSearch.toLowerCase();
+    return availableReqNames.filter(r =>
+      r.req_name.toLowerCase().includes(searchLower)
+    );
+  }, [availableReqNames, reqNameSearch]);
 
   // Load users
   const loadUsers = async () => {
@@ -210,7 +232,7 @@ function AdminUsersContent() {
     setEditingUser(null);
     // Use the last role (lowest priority) as default, or "PR" if no roles
     const defaultRole = roles.length > 0 ? roles[roles.length - 1]?.code || "PR" : "PR";
-    setFormData({ userId: "", username: "", name: "", password: "", role: defaultRole, isActive: true, telegramChatId: "" });
+    setFormData({ userId: "", username: "", name: "", password: "", role: defaultRole, isActive: true, telegramChatId: "", linkedReqName: "" });
     setIsModalOpen(true);
   };
 
@@ -226,6 +248,7 @@ function AdminUsersContent() {
       role: user.role || "PR",
       isActive: user.isActive,
       telegramChatId: "",
+      linkedReqName: "",
     });
     setIsModalOpen(true);
   };
@@ -242,7 +265,11 @@ function AdminUsersContent() {
       role: user.role || "PR",
       isActive: user.isActive,
       telegramChatId: user.telegramChatId || "",
+      linkedReqName: user.linked_req_name || "",
     });
+    // Reset searchable dropdown state
+    setReqNameSearch("");
+    setIsReqNameDropdownOpen(false);
     setIsModalOpen(true);
   };
 
@@ -265,6 +292,7 @@ function AdminUsersContent() {
             role: formData.role,
             isActive: formData.isActive,
             telegramChatId: formData.telegramChatId,
+            linkedReqName: formData.linkedReqName,
           }),
         });
 
@@ -284,7 +312,7 @@ function AdminUsersContent() {
           ? { id: editingUser.id, ...formData }
           : formData;
 
-        const response = await fetch(url, {
+        const response = await authFetch(url, {
           method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -542,7 +570,7 @@ function AdminUsersContent() {
                 </CanAccess>
               </div>
 
-              <div className="overflow-hidden rounded-lg bg-white shadow">
+              <div className="overflow-x-auto rounded-lg bg-white shadow">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -565,9 +593,12 @@ function AdminUsersContent() {
                         Telegram ID
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Linked Req Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         Last Sync
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className="sticky right-0 bg-gray-50 px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
                         จัดการ
                       </th>
                     </tr>
@@ -575,13 +606,13 @@ function AdminUsersContent() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {loadingUsersProduction ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-4 text-center">
+                        <td colSpan={9} className="px-6 py-4 text-center">
                           กำลังโหลด...
                         </td>
                       </tr>
                     ) : usersProduction.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                        <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
                           ไม่มีข้อมูลผู้ใช้ - กดปุ่ม &quot;Sync จาก TMK_PDPJ01&quot; เพื่อดึงข้อมูล
                         </td>
                       </tr>
@@ -613,11 +644,14 @@ function AdminUsersContent() {
                             {user.telegramChatId || "-"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                            {user.linked_req_name || "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
                             {user.lastSyncAt
                               ? new Date(user.lastSyncAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
                               : "-"}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-right text-sm font-medium">
+                          <td className={`sticky right-0 whitespace-nowrap px-4 py-4 text-right text-sm font-medium shadow-[-2px_0_4px_rgba(0,0,0,0.05)] ${!user.isActive ? 'bg-gray-100' : 'bg-white'}`}>
                             <CanAccess action="admin_users.update" fallback={<span className="mr-3 text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์แก้ไข">แก้ไข</span>}>
                               <button
                                 onClick={() => handleEditUserProduction(user)}
@@ -773,23 +807,139 @@ function AdminUsersContent() {
               </div>
 
               {editingUserProduction && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Telegram Chat ID
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.telegramChatId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, telegramChatId: e.target.value })
-                    }
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                    placeholder="เช่น 123456789"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    ใช้สำหรับส่งการแจ้งเตือน Telegram โดยตรง
-                  </p>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Telegram Chat ID
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.telegramChatId}
+                      onChange={(e) =>
+                        setFormData({ ...formData, telegramChatId: e.target.value })
+                      }
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                      placeholder="เช่น 123456789"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      ใช้สำหรับส่งการแจ้งเตือน Telegram โดยตรง
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700">
+                      ชื่อผู้ขอ PR (Linked Req Name)
+                    </label>
+                    {/* Searchable Dropdown */}
+                    <div className="relative mt-1">
+                      <input
+                        type="text"
+                        value={isReqNameDropdownOpen ? reqNameSearch : formData.linkedReqName}
+                        onChange={(e) => {
+                          setReqNameSearch(e.target.value);
+                          if (!isReqNameDropdownOpen) setIsReqNameDropdownOpen(true);
+                        }}
+                        onFocus={() => {
+                          setIsReqNameDropdownOpen(true);
+                          setReqNameSearch("");
+                        }}
+                        onBlur={() => {
+                          // Delay to allow click on dropdown item
+                          setTimeout(() => setIsReqNameDropdownOpen(false), 200);
+                        }}
+                        placeholder="พิมพ์เพื่อค้นหา หรือเลือกจากรายการ..."
+                        className="block w-full rounded-md border border-gray-300 px-3 py-2 pr-10"
+                      />
+                      {/* Clear button */}
+                      {formData.linkedReqName && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, linkedReqName: "" });
+                            setReqNameSearch("");
+                          }}
+                          className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                      {/* Dropdown arrow */}
+                      <button
+                        type="button"
+                        onClick={() => setIsReqNameDropdownOpen(!isReqNameDropdownOpen)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+                      >
+                        <svg className={`h-5 w-5 transition-transform ${isReqNameDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {/* Dropdown List */}
+                      {isReqNameDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white shadow-lg border border-gray-200">
+                          {/* ไม่ระบุ option */}
+                          <div
+                            onClick={() => {
+                              setFormData({ ...formData, linkedReqName: "" });
+                              setReqNameSearch("");
+                              setIsReqNameDropdownOpen(false);
+                            }}
+                            className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
+                              !formData.linkedReqName ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500'
+                            }`}
+                          >
+                            -- ไม่ระบุ --
+                          </div>
+
+                          {/* Current value ถ้ามี */}
+                          {editingUserProduction?.linked_req_name && (
+                            <div
+                              onClick={() => {
+                                setFormData({ ...formData, linkedReqName: editingUserProduction.linked_req_name || "" });
+                                setReqNameSearch("");
+                                setIsReqNameDropdownOpen(false);
+                              }}
+                              className={`px-3 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 ${
+                                formData.linkedReqName === editingUserProduction.linked_req_name ? 'bg-indigo-50 text-indigo-700' : ''
+                              }`}
+                            >
+                              <span className="font-medium">{editingUserProduction.linked_req_name}</span>
+                              <span className="ml-2 text-xs text-green-600">(ปัจจุบัน)</span>
+                            </div>
+                          )}
+
+                          {/* Filtered options */}
+                          {filteredReqNames.length > 0 ? (
+                            filteredReqNames.map((r) => (
+                              <div
+                                key={r.req_name}
+                                onClick={() => {
+                                  setFormData({ ...formData, linkedReqName: r.req_name });
+                                  setReqNameSearch("");
+                                  setIsReqNameDropdownOpen(false);
+                                }}
+                                className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
+                                  formData.linkedReqName === r.req_name ? 'bg-indigo-50 text-indigo-700' : ''
+                                }`}
+                              >
+                                <span>{r.req_name}</span>
+                                <span className="ml-2 text-xs text-gray-400">({r.pr_count} PR)</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-gray-500 text-sm">
+                              ไม่พบผลลัพธ์ที่ตรงกับ &quot;{reqNameSearch}&quot;
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      ใช้ match กับ req_name ใน PR เพื่อรับแจ้งเตือนเมื่อ warehouse confirm รับของ หรือมีการตอบ Q&amp;A
+                    </p>
+                  </div>
+                </>
               )}
 
               <div className="flex items-center">

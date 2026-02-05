@@ -5,7 +5,18 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { createTRPCRouter, createTableProcedure, authenticatedProcedure } from "~/server/api/trpc";
 import { sendCustomNotification } from "~/server/services/telegram";
-import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
+import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
+import { checkTablePermission } from "~/lib/check-permission";
+import type { PermissionAction } from "~/lib/permissions";
+
+// Mapping approval type to permission action
+const APPROVAL_PERMISSION_MAP: Record<string, { tableName: string; action: PermissionAction }> = {
+  requester: { tableName: 'pr_approve', action: 'requester' },
+  line: { tableName: 'pr_approve', action: 'line_approver' },
+  cost_center: { tableName: 'pr_approve', action: 'cost_center' },
+  procurement: { tableName: 'pr_approve', action: 'manager' },
+  vpc: { tableName: 'pr_approve', action: 'final' },
+};
 
 export const prApprovalRouter = createTRPCRouter({
   // 🔹 อนุมัติโดยผู้ขอซื้อ, ผู้อนุมัติตามสายงาน, Cost Center, งานจัดซื้อพัสดุ หรือ VP-C
@@ -76,13 +87,38 @@ export const prApprovalRouter = createTRPCRouter({
           }
         }
 
-        if (input.approvalType !== 'requester') {
+        // 🔐 ตรวจสอบ Permission + OCR Approver List
+        const permissionConfig = APPROVAL_PERMISSION_MAP[input.approvalType];
+        if (!permissionConfig) {
+          throw new Error('Invalid approval type');
+        }
+
+        // เช็ค permission ก่อน
+        const permissionResult = await checkTablePermission(ctx.db, {
+          tableName: permissionConfig.tableName,
+          action: permissionConfig.action,
+          userId: input.approverUserId || '',
+          userRole: input.approverRole || '',
+        });
+
+        if (!permissionResult.allowed) {
+          throw new Error(`คุณไม่มีสิทธิ์อนุมัติ${
+            input.approvalType === 'requester' ? ' (ผู้ขอซื้อ)' :
+            input.approvalType === 'line' ? 'ตามสายงาน (ขั้น 2)' :
+            input.approvalType === 'cost_center' ? 'ตาม Cost Center (ขั้น 3)' :
+            input.approvalType === 'procurement' ? ' (งานจัดซื้อพัสดุ - ขั้น 4)' :
+            ' (VP-C - ขั้น 5)'
+          }`);
+        }
+
+        // สำหรับ line และ cost_center ต้องเช็ค ocr_approver list ด้วย
+        if (input.approvalType === 'line' || input.approvalType === 'cost_center') {
           const approverList = input.approvalType === 'line' ? lineApprovers : costCenterApprovers;
-          const isAuthorized = approverList.some(
+          const isInApproverList = approverList.some(
             approver => approver.username === input.approverName || approver.userId === input.approverUserId
           );
-          if (!isAuthorized) {
-            throw new Error('คุณไม่มีสิทธิ์อนุมัติในส่วนนี้');
+          if (!isInApproverList) {
+            throw new Error(`คุณไม่ได้อยู่ในรายชื่อผู้อนุมัติ${input.approvalType === 'line' ? 'ตามสายงาน' : 'ตาม Cost Center'}ของ PR นี้`);
           }
         }
 
@@ -105,27 +141,43 @@ export const prApprovalRouter = createTRPCRouter({
         });
       }
 
-      // Check authorization for existing receipt
-      if (input.approvalType !== 'requester') {
+      // 🔐 Check authorization for existing receipt (Permission + OCR Approver List)
+      const permissionConfig = APPROVAL_PERMISSION_MAP[input.approvalType];
+      if (!permissionConfig) {
+        throw new Error('Invalid approval type');
+      }
+
+      // เช็ค permission ก่อน
+      const permissionResult = await checkTablePermission(ctx.db, {
+        tableName: permissionConfig.tableName,
+        action: permissionConfig.action,
+        userId: input.approverUserId || '',
+        userRole: input.approverRole || '',
+      });
+
+      if (!permissionResult.allowed) {
+        throw new Error(`คุณไม่มีสิทธิ์อนุมัติ${
+          input.approvalType === 'requester' ? ' (ผู้ขอซื้อ)' :
+          input.approvalType === 'line' ? 'ตามสายงาน (ขั้น 2)' :
+          input.approvalType === 'cost_center' ? 'ตาม Cost Center (ขั้น 3)' :
+          input.approvalType === 'procurement' ? ' (งานจัดซื้อพัสดุ - ขั้น 4)' :
+          ' (VP-C - ขั้น 5)'
+        }`);
+      }
+
+      // สำหรับ line และ cost_center ต้องเช็ค ocr_approver list ด้วย
+      if (input.approvalType === 'line' || input.approvalType === 'cost_center') {
         const approverList = input.approvalType === 'line'
           ? (receipt.line_approvers as { userId: string; username: string }[] || [])
           : (receipt.cost_center_approvers as { userId: string; username: string }[] || []);
 
-        const isAuthorized = approverList.some(
+        const isInApproverList = approverList.some(
           approver => approver.username === input.approverName || approver.userId === input.approverUserId
         );
 
-        if (!isAuthorized) {
-          throw new Error('คุณไม่มีสิทธิ์อนุมัติในส่วนนี้');
+        if (!isInApproverList) {
+          throw new Error(`คุณไม่ได้อยู่ในรายชื่อผู้อนุมัติ${input.approvalType === 'line' ? 'ตามสายงาน' : 'ตาม Cost Center'}ของ PR นี้`);
         }
-      }
-
-      // Role-based checks
-      if (input.approvalType === 'procurement' && input.approverRole !== 'Manager') {
-        throw new Error('เฉพาะ Manager เท่านั้นที่สามารถอนุมัติ (งานจัดซื้อพัสดุ) ได้');
-      }
-      if (input.approvalType === 'vpc' && input.approverRole !== 'Approval') {
-        throw new Error('เฉพาะ Approval เท่านั้นที่สามารถอนุมัติ (VP-C) ได้');
       }
 
       // Sequential approval validation
@@ -288,6 +340,7 @@ export const prApprovalRouter = createTRPCRouter({
         metadata: {
           approverRole: input.approverRole,
         },
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       return {
@@ -305,6 +358,8 @@ export const prApprovalRouter = createTRPCRouter({
       prNo: z.number(),
       approvalType: z.enum(['requester', 'line', 'cost_center', 'procurement', 'vpc']),
       clearedByRole: z.string(),
+      clearedByUserId: z.string().optional(),
+      clearedByName: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (input.clearedByRole !== 'Admin') {
@@ -380,6 +435,8 @@ export const prApprovalRouter = createTRPCRouter({
 
       // Audit log: Clear PR Approval
       createAuditLog(ctx.db, {
+        userId: input.clearedByUserId,
+        userName: input.clearedByName,
         action: "CLEAR_APPROVAL",
         tableName: "pr_document_receipt",
         recordId: String(input.prNo),
@@ -393,6 +450,7 @@ export const prApprovalRouter = createTRPCRouter({
         metadata: {
           clearedByRole: input.clearedByRole,
         },
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       return {
@@ -414,6 +472,19 @@ export const prApprovalRouter = createTRPCRouter({
       userRole: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
+      // เช็ค permissions ของ user ก่อน
+      const permissionChecks = await Promise.all([
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'line_approver', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'cost_center', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'manager', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'final', userId: input.userId, userRole: input.userRole || '' }),
+      ]);
+
+      const hasLinePermission = permissionChecks[0]!.allowed;
+      const hasCostCenterPermission = permissionChecks[1]!.allowed;
+      const hasManagerPermission = permissionChecks[2]!.allowed;
+      const hasFinalPermission = permissionChecks[3]!.allowed;
+
       const allReceipts = await ctx.db.pr_document_receipt.findMany({
         select: {
           pr_doc_num: true,
@@ -433,33 +504,37 @@ export const prApprovalRouter = createTRPCRouter({
         const lineApprovers = receipt.line_approvers as Array<{userId: string; username: string}> || [];
         const ccApprovers = receipt.cost_center_approvers as Array<{userId: string; username: string}> || [];
 
+        // ขั้น 2: ต้องมี permission + อยู่ใน approver list
         if (receipt.requester_approval_at && !receipt.line_approval_at) {
           const isLineApprover = lineApprovers.some(
             a => a.userId === input.userId || a.username === input.userName
           );
-          if (isLineApprover) { count++; continue; }
+          if (hasLinePermission && isLineApprover) { count++; continue; }
         }
 
+        // ขั้น 3: ต้องมี permission + อยู่ใน approver list
         if (receipt.line_approval_at && !receipt.cost_center_approval_at) {
           const isCCApprover = ccApprovers.some(
             a => a.userId === input.userId || a.username === input.userName
           );
-          if (isCCApprover) { count++; continue; }
+          if (hasCostCenterPermission && isCCApprover) { count++; continue; }
         }
 
+        // ขั้น 4: ต้องมี permission (ไม่ต้องเช็ค role แล้ว)
         if (receipt.cost_center_approval_at && !receipt.procurement_approval_at) {
-          if (input.userRole === 'Manager') { count++; continue; }
+          if (hasManagerPermission) { count++; continue; }
         }
 
+        // ขั้น 5: ต้องมี permission (ไม่ต้องเช็ค role แล้ว)
         if (receipt.procurement_approval_at && !receipt.vpc_approval_at) {
-          if (input.userRole === 'Approval') { count++; continue; }
+          if (hasFinalPermission) { count++; continue; }
         }
       }
 
       return count;
     }),
 
-  // 🔹 ดึงรายการ PR ที่รอการอนุมัติของฉัน
+  // 🔹 ดึงรายการ PR ที่รอการอนุมัติของฉัน (พร้อม job_name)
   getMyPendingApprovals: createTableProcedure('pr_approval', 'read')
     .input(z.object({
       userId: z.string(),
@@ -467,6 +542,19 @@ export const prApprovalRouter = createTRPCRouter({
       userRole: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
+      // เช็ค permissions ของ user ก่อน
+      const permissionChecks = await Promise.all([
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'line_approver', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'cost_center', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'manager', userId: input.userId, userRole: input.userRole || '' }),
+        checkTablePermission(ctx.db, { tableName: 'pr_approve', action: 'final', userId: input.userId, userRole: input.userRole || '' }),
+      ]);
+
+      const hasLinePermission = permissionChecks[0]!.allowed;
+      const hasCostCenterPermission = permissionChecks[1]!.allowed;
+      const hasManagerPermission = permissionChecks[2]!.allowed;
+      const hasFinalPermission = permissionChecks[3]!.allowed;
+
       const allReceipts = await ctx.db.pr_document_receipt.findMany({
         select: {
           pr_doc_num: true,
@@ -494,11 +582,12 @@ export const prApprovalRouter = createTRPCRouter({
 
         if (!receipt.requester_approval_at) continue;
 
+        // ขั้น 2: ต้องมี permission + อยู่ใน approver list
         if (receipt.requester_approval_at && !receipt.line_approval_at) {
           const isLineApprover = lineApprovers.some(
             a => a.userId === input.userId || a.username === input.userName
           );
-          if (isLineApprover) {
+          if (hasLinePermission && isLineApprover) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'line',
@@ -509,11 +598,12 @@ export const prApprovalRouter = createTRPCRouter({
           }
         }
 
+        // ขั้น 3: ต้องมี permission + อยู่ใน approver list
         if (receipt.line_approval_at && !receipt.cost_center_approval_at) {
           const isCCApprover = ccApprovers.some(
             a => a.userId === input.userId || a.username === input.userName
           );
-          if (isCCApprover) {
+          if (hasCostCenterPermission && isCCApprover) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'cost_center',
@@ -524,8 +614,9 @@ export const prApprovalRouter = createTRPCRouter({
           }
         }
 
+        // ขั้น 4: ต้องมี permission (ไม่ต้องเช็ค role แล้ว)
         if (receipt.cost_center_approval_at && !receipt.procurement_approval_at) {
-          if (input.userRole === 'Manager') {
+          if (hasManagerPermission) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'procurement',
@@ -536,8 +627,9 @@ export const prApprovalRouter = createTRPCRouter({
           }
         }
 
+        // ขั้น 5: ต้องมี permission (ไม่ต้องเช็ค role แล้ว)
         if (receipt.procurement_approval_at && !receipt.vpc_approval_at) {
-          if (input.userRole === 'Approval') {
+          if (hasFinalPermission) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'vpc',
@@ -549,13 +641,26 @@ export const prApprovalRouter = createTRPCRouter({
         }
       }
 
+      // Sort by createdAt DESC
       pendingApprovals.sort((a, b) => {
         if (!a.createdAt) return 1;
         if (!b.createdAt) return -1;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
 
-      return pendingApprovals;
+      // Fetch job_name for each PR from pr_master
+      const prNos = pendingApprovals.map(p => p.prNo);
+      const prMasters = prNos.length > 0 ? await ctx.db.pr_master.findMany({
+        where: { doc_num: { in: prNos } },
+        select: { doc_num: true, job_name: true },
+      }) : [];
+
+      const jobNameMap = new Map(prMasters.map((h: { doc_num: number; job_name: string | null }) => [h.doc_num, h.job_name]));
+
+      return pendingApprovals.map(p => ({
+        ...p,
+        jobName: jobNameMap.get(p.prNo) || null,
+      }));
     }),
 
   // 🔹 ดึงข้อมูลการอนุมัติเอกสาร PR
@@ -647,6 +752,7 @@ export const prApprovalRouter = createTRPCRouter({
           prJobName: input.prJobName,
           prRequester: input.prRequester,
         },
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       // Send Telegram notification

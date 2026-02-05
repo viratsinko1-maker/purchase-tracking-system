@@ -3,7 +3,8 @@
  */
 import { z } from "zod";
 import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
-import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
+import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
+import { sendTelegramMessageToUser } from "~/server/services/telegram";
 
 export const prWarehouseRouter = createTRPCRouter({
   // 🔹 บันทึกการรับของ (สามารถรับหลายรายการพร้อมกัน)
@@ -87,7 +88,62 @@ export const prWarehouseRouter = createTRPCRouter({
         },
         description: `รับของ PR #${prDocNum} จำนวน ${results.length} รายการ`,
         metadata: { batchKey },
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
+
+      // 🔔 Notification: แจ้งผู้เปิด PR ว่าของพร้อมรับแล้ว
+      try {
+        // ดึงข้อมูล PR
+        const prMaster = await ctx.db.pr_master.findUnique({
+          where: { doc_num: prDocNum },
+          select: { req_name: true, job_name: true },
+        });
+
+        if (prMaster?.req_name) {
+          // หา user จาก linked_req_name
+          const requesterUser = await ctx.db.user_production.findFirst({
+            where: {
+              linked_req_name: prMaster.req_name,
+              isActive: true,
+            },
+            select: { id: true, name: true, telegramChatId: true },
+          });
+
+          if (requesterUser) {
+            // 1. สร้าง In-App Notification (สำหรับ TopBar)
+            await ctx.db.user_notification.create({
+              data: {
+                user_id: requesterUser.id,
+                type: 'goods_ready',
+                title: `PR #${prDocNum} - ของพร้อมรับแล้ว`,
+                message: `Warehouse รับของเข้าคลังแล้ว${prMaster.job_name ? ` (${prMaster.job_name})` : ''} กรุณามารับของ`,
+                pr_doc_num: prDocNum,
+                is_read: false,
+              },
+            });
+
+            // 2. ส่ง Telegram (ถ้ามี telegramChatId)
+            if (requesterUser.telegramChatId) {
+              const now = new Date();
+              const telegramMessage = `📦 <b>แจ้งเตือน: ของพร้อมรับแล้ว</b>
+
+PR #${prDocNum}
+${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''}
+✅ สถานะ: Warehouse รับของเข้าคลังแล้ว
+👤 รับโดย: ${receivedBy}
+🕐 เวลา: ${now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}
+
+กรุณามารับของที่ Warehouse`;
+
+              sendTelegramMessageToUser(requesterUser.telegramChatId, telegramMessage)
+                .catch(err => console.error('[Notification] Telegram send failed:', err));
+            }
+          }
+        }
+      } catch (notifyError) {
+        // Log error แต่ไม่ fail การบันทึก
+        console.error('[Notification] Failed to send goods ready notification:', notifyError);
+      }
 
       return {
         success: true,
@@ -190,9 +246,10 @@ export const prWarehouseRouter = createTRPCRouter({
     .input(z.object({
       id: z.number(),
       deletedBy: z.string(),
+      deletedByUserId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, deletedBy } = input;
+      const { id, deletedBy, deletedByUserId } = input;
 
       // Get record first for logging
       const record = await ctx.db.warehouse_receivegood.findUnique({
@@ -210,6 +267,7 @@ export const prWarehouseRouter = createTRPCRouter({
 
       // Audit log: Delete receive goods
       createAuditLog(ctx.db, {
+        userId: deletedByUserId,
         userName: deletedBy,
         action: AuditAction.DELETE,
         tableName: "warehouse_receivegood",
@@ -222,6 +280,7 @@ export const prWarehouseRouter = createTRPCRouter({
           receivedQty: record.received_qty,
         },
         description: `ลบรายการรับของ PR #${record.pr_doc_num} Line ${record.line_num}`,
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       return {
@@ -236,9 +295,10 @@ export const prWarehouseRouter = createTRPCRouter({
     .input(z.object({
       ids: z.array(z.number()),
       deletedBy: z.string(),
+      deletedByUserId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { ids, deletedBy } = input;
+      const { ids, deletedBy, deletedByUserId } = input;
 
       const result = await ctx.db.warehouse_receivegood.deleteMany({
         where: {
@@ -248,12 +308,14 @@ export const prWarehouseRouter = createTRPCRouter({
 
       // Audit log: Delete multiple receive goods
       createAuditLog(ctx.db, {
+        userId: deletedByUserId,
         userName: deletedBy,
         action: AuditAction.DELETE,
         tableName: "warehouse_receivegood",
         oldValues: { deletedIds: ids },
         description: `ลบรายการรับของหลายรายการ จำนวน ${result.count} รายการ`,
         metadata: { deletedCount: result.count },
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       return {
@@ -295,6 +357,8 @@ export const prWarehouseRouter = createTRPCRouter({
   deleteAttachment: createTableProcedure('receive_attachment', 'delete')
     .input(z.object({
       id: z.number(),
+      deletedBy: z.string().optional(),
+      deletedByUserId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const attachment = await ctx.db.warehouse_receive_attachment.findUnique({
@@ -312,6 +376,8 @@ export const prWarehouseRouter = createTRPCRouter({
 
       // Audit log: Delete attachment
       createAuditLog(ctx.db, {
+        userId: input.deletedByUserId,
+        userName: input.deletedBy,
         action: AuditAction.DELETE,
         tableName: "warehouse_receive_attachment",
         recordId: String(input.id),
@@ -321,6 +387,7 @@ export const prWarehouseRouter = createTRPCRouter({
           filePath: attachment.file_path,
         },
         description: `ลบไฟล์แนบ: ${attachment.file_name}`,
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       // Note: Physical file deletion is handled separately if needed
@@ -475,8 +542,52 @@ export const prWarehouseRouter = createTRPCRouter({
         console.error('[KPI] Failed to record receive confirm KPI metric:', kpiError);
       }
 
+      // 🔔 Notification: ลบ notification เมื่อผู้เปิด PR confirm รับของแล้ว
+      try {
+        // หา PR numbers ที่ถูก confirm ในครั้งนี้
+        const confirmedPRDocNums = [...new Set(
+          existingRecords
+            .filter(r => items.some(i => i.id === r.id && i.confirm_status === 'confirmed'))
+            .map(r => r.pr_doc_num)
+        )];
+
+        for (const prDocNum of confirmedPRDocNums) {
+          // ดึงข้อมูล PR
+          const prMaster = await ctx.db.pr_master.findUnique({
+            where: { doc_num: prDocNum },
+            select: { req_name: true },
+          });
+
+          if (!prMaster?.req_name) continue;
+
+          // หา user จาก linked_req_name
+          const requesterUser = await ctx.db.user_production.findFirst({
+            where: {
+              linked_req_name: prMaster.req_name,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+
+          if (!requesterUser) continue;
+
+          // ลบ notification ของ goods_ready สำหรับ PR นี้
+          await ctx.db.user_notification.deleteMany({
+            where: {
+              user_id: requesterUser.id,
+              type: 'goods_ready',
+              pr_doc_num: prDocNum,
+            },
+          });
+        }
+      } catch (notifyError) {
+        // Log error แต่ไม่ fail การ confirm
+        console.error('[Notification] Failed to delete goods ready notification:', notifyError);
+      }
+
       // Audit log: Update batch confirm status
       createAuditLog(ctx.db, {
+        userId: confirmed_by_user_id,
         userName: confirmed_by,
         action: AuditAction.UPDATE,
         tableName: "warehouse_receivegood",
@@ -486,6 +597,7 @@ export const prWarehouseRouter = createTRPCRouter({
           items: items.map(i => ({ id: i.id, status: i.confirm_status })),
         },
         description: `ยืนยันการรับของ: ${confirmedCount} รายการยืนยัน, ${rejectedCount} รายการปฏิเสธ`,
+        ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
       return {

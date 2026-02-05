@@ -46,14 +46,14 @@ export default async function handler(
             session_end: sessionEnd,
             duration_seconds: durationSeconds,
             duration_minutes: durationSeconds / 60,
-            logout_type: reason === 'auto_logout_idle' ? 'timeout' : 'manual',
+            logout_type: reason === 'auto_logout_idle' ? 'inactivity' : 'manual',
           },
         }).catch(console.error);
       }
 
       // Log audit trail
       const logoutDescription = reason === 'auto_logout_idle'
-        ? `ออกจากระบบ (หมดเวลา) - ใช้งาน ${durationMinutes} นาที`
+        ? `ออกจากระบบ (ไม่มีกิจกรรม 15 นาที) - ใช้งาน ${durationMinutes} นาที`
         : `ออกจากระบบ - ใช้งาน ${durationMinutes} นาที`;
 
       createAuditLog(db, {

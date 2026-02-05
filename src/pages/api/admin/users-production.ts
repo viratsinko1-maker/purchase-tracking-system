@@ -41,6 +41,7 @@ async function handler(
           isActive: true,
           sourceId: true,
           telegramChatId: true,
+          linked_req_name: true,
           lastSyncAt: true,
           createdAt: true,
           updatedAt: true,
@@ -189,7 +190,7 @@ async function handler(
 
     // PUT - Update user
     if (req.method === "PUT") {
-      const { id, username, name, password, role, isActive, telegramChatId } = req.body as {
+      const { id, username, name, password, role, isActive, telegramChatId, linkedReqName } = req.body as {
         id: string;
         username?: string;
         name?: string;
@@ -197,6 +198,7 @@ async function handler(
         role?: string;
         isActive?: boolean;
         telegramChatId?: string;
+        linkedReqName?: string;
       };
 
       if (!id) {
@@ -211,6 +213,7 @@ async function handler(
         role?: string;
         isActive?: boolean;
         telegramChatId?: string | null;
+        linked_req_name?: string | null;
       } = {};
 
       if (username !== undefined) updateData.username = username;
@@ -218,6 +221,7 @@ async function handler(
       if (role !== undefined) updateData.role = role;
       if (isActive !== undefined) updateData.isActive = isActive;
       if (telegramChatId !== undefined) updateData.telegramChatId = telegramChatId || null;
+      if (linkedReqName !== undefined) updateData.linked_req_name = linkedReqName || null;
 
       // Hash password if provided
       if (password && password.trim() !== "") {
@@ -243,6 +247,7 @@ async function handler(
           role: oldUser.role,
           isActive: oldUser.isActive,
           telegramChatId: oldUser.telegramChatId,
+          linked_req_name: oldUser.linked_req_name,
         } : undefined,
         newValues: {
           username: updatedUser.username,
@@ -250,6 +255,7 @@ async function handler(
           role: updatedUser.role,
           isActive: updatedUser.isActive,
           telegramChatId: updatedUser.telegramChatId,
+          linked_req_name: updatedUser.linked_req_name,
           passwordChanged: !!(password && password.trim() !== ""),
         },
         description: `แก้ไขผู้ใช้ Production: ${updatedUser.name || updatedUser.email}`,

@@ -428,6 +428,15 @@ export function getIpFromRequest(req: { headers?: Record<string, string | string
 }
 
 /**
+ * Helper to extract IP address from tRPC context
+ * Use this in tRPC procedures to get client IP
+ */
+export function getIpFromContext(ctx: { req?: { headers?: Record<string, string | string[] | undefined>; socket?: { remoteAddress?: string } } }): string | undefined {
+  if (!ctx.req) return undefined;
+  return getIpFromRequest(ctx.req);
+}
+
+/**
  * Quick helper for common audit scenarios
  */
 export const auditHelpers = {

@@ -99,25 +99,72 @@ export default async function handler(
     }).catch(console.error);
     console.log('[LOGIN API] ✅ Activity logged for user:', user.id, 'IP:', ipAddress, 'Computer:', computerName || 'unknown', 'Source:', userSource);
 
-    // Create active session for heartbeat tracking (fire-and-forget)
-    db.active_session.upsert({
+    // Create active session for heartbeat tracking
+    // First, check if there's an existing session (user re-logging in before timeout)
+    const existingSession = await db.active_session.findUnique({
       where: { user_id: user.id },
-      update: {
-        last_heartbeat: new Date(),
-        session_start: new Date(),
-        ip_address: ipAddress,
-        computer_name: computerName ?? null,
-        user_name: user.name ?? user.username ?? null,
-      },
-      create: {
-        user_id: user.id,
-        user_name: user.name ?? user.username ?? null,
-        ip_address: ipAddress,
-        computer_name: computerName ?? null,
-        last_heartbeat: new Date(),
-        session_start: new Date(),
-      },
-    }).catch((err) => console.error('[LOGIN API] Failed to create active session:', err));
+    });
+
+    if (existingSession) {
+      // Log LOGOUT for the old session before creating new one
+      const sessionEnd = new Date();
+      const sessionStart = existingSession.session_start;
+      const durationSeconds = Math.floor((sessionEnd.getTime() - sessionStart.getTime()) / 1000);
+      const durationMinutes = durationSeconds / 60;
+
+      // Save to session history
+      await db.session_history.create({
+        data: {
+          user_id: existingSession.user_id,
+          user_name: existingSession.user_name,
+          ip_address: existingSession.ip_address,
+          computer_name: existingSession.computer_name,
+          session_start: sessionStart,
+          session_end: sessionEnd,
+          duration_seconds: durationSeconds,
+          duration_minutes: durationMinutes,
+          logout_type: 'relogin', // User logged in again before session expired
+        },
+      });
+
+      // Log LOGOUT for old session
+      await createAuditLog(db, {
+        userId: existingSession.user_id,
+        userName: existingSession.user_name ?? undefined,
+        action: AuditAction.LOGOUT,
+        tableName: "User",
+        recordId: existingSession.user_id,
+        description: `ออกจากระบบ (ล็อคอินใหม่) - ใช้งาน ${Math.round(durationMinutes)} นาที`,
+        ipAddress: existingSession.ip_address ?? undefined,
+        computerName: existingSession.computer_name ?? undefined,
+      });
+
+      console.log('[LOGIN API] Logged out previous session for user:', existingSession.user_id);
+
+      // Update existing session with new data
+      await db.active_session.update({
+        where: { user_id: user.id },
+        data: {
+          last_heartbeat: new Date(),
+          session_start: new Date(),
+          ip_address: ipAddress,
+          computer_name: computerName ?? null,
+          user_name: user.name ?? user.username ?? null,
+        },
+      });
+    } else {
+      // No existing session, create new one
+      await db.active_session.create({
+        data: {
+          user_id: user.id,
+          user_name: user.name ?? user.username ?? null,
+          ip_address: ipAddress,
+          computer_name: computerName ?? null,
+          last_heartbeat: new Date(),
+          session_start: new Date(),
+        },
+      });
+    }
 
     // Return user data (in a real app, you'd create a session/token here)
     return res.status(200).json({

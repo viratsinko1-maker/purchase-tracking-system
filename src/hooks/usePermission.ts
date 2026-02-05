@@ -359,19 +359,13 @@ export function useMenuVisibility(menuItems: MenuItem[]): MenuItem[] {
 
       // Permission-based visibility
       if (item.permission) {
-        const tablePerms = permissions[item.permission.table];
+        // Use combined key format: "table.action" (e.g., "pr_tracking.read")
+        const permKey = `${item.permission.table}.${item.permission.action}`;
+        const tablePerms = permissions[permKey];
         if (!tablePerms) return false;
 
-        switch (item.permission.action) {
-          case 'create':
-            return tablePerms.canCreate;
-          case 'read':
-            return tablePerms.canRead;
-          case 'update':
-            return tablePerms.canUpdate;
-          case 'delete':
-            return tablePerms.canDelete;
-        }
+        // For action-based permissions, canRead is the "allowed" flag
+        return tablePerms.canRead;
       }
 
       // Default: show

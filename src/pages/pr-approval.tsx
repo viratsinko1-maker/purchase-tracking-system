@@ -4,7 +4,7 @@
  * เข้าถึงได้โดยคลิกที่กระดิ่งใน TopBar
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "~/utils/api";
 import Head from "next/head";
 import { useAuth } from "~/hooks/useAuth";
@@ -24,6 +24,22 @@ export default function PRApprovalPage() {
   const { user, loading: authLoading } = useAuth();
   const [selectedPrNo, setSelectedPrNo] = useState<number | null>(null);
   const [selectedPrNoForDetail, setSelectedPrNoForDetail] = useState<number | null>(null);
+  const [highlightedPrNo, setHighlightedPrNo] = useState<number | null>(null);
+
+  // Read prNo from query param (from notification dropdown)
+  useEffect(() => {
+    const { prNo } = router.query;
+    if (prNo) {
+      const prNumber = parseInt(String(prNo), 10);
+      if (!isNaN(prNumber)) {
+        setHighlightedPrNo(prNumber);
+        // Auto-open the modal for this PR
+        setSelectedPrNo(prNumber);
+        // Clear the query param from URL (optional)
+        void router.replace('/pr-approval', undefined, { shallow: true });
+      }
+    }
+  }, [router.query, router]);
 
   // Query pending approvals list สำหรับ user ปัจจุบัน
   const { data: pendingApprovals = [], isLoading, refetch } = api.pr.getMyPendingApprovals.useQuery(
@@ -179,7 +195,10 @@ export default function PRApprovalPage() {
                     const prSummary = prSummaryMap.get(item.prNo);
 
                     return (
-                      <tr key={`${item.prNo}-${item.stage}`} className="hover:bg-gray-50">
+                      <tr
+                        key={`${item.prNo}-${item.stage}`}
+                        className={`hover:bg-gray-50 ${highlightedPrNo === item.prNo ? 'bg-amber-50 ring-2 ring-amber-400 ring-inset' : ''}`}
+                      >
                         <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
                           <button
                             onClick={() => setSelectedPrNoForDetail(item.prNo)}

@@ -318,56 +318,59 @@ ${input.responseNote || '-'}
             }
           }
 
-          // === ส่ง Telegram ส่วนตัวไปหาผู้เปิด PR ===
+          // === ส่ง Notification (In-App + Telegram) ไปหาผู้เปิด PR ===
           if (pr?.req_name) {
             try {
-              // req_name format: "นามสกุล, ชื่อ" (เช่น "ศิริสัณฐิติ, นายประกาศิต")
-              // แยกเอาเฉพาะชื่อ (ส่วนหลัง comma) มาค้นหา
-              let searchName = pr.req_name;
-              if (pr.req_name.includes(',')) {
-                const parts = pr.req_name.split(',').map(p => p.trim());
-                if (parts.length >= 2 && parts[1]) {
-                  searchName = parts[1]; // เอาชื่อ (ส่วนหลัง comma)
-                }
-              }
-
-              // ค้นหา user ด้วย contains
+              // ใช้ linked_req_name แทน name.contains เพื่อความแม่นยำ
               const prOpenerUser = await ctx.db.user_production.findFirst({
                 where: {
-                  name: { contains: searchName },
-                  telegramChatId: { not: null },
+                  linked_req_name: pr.req_name,  // Match exact กับ req_name ใน pr_master
                   isActive: true,
                 },
-                select: { name: true, telegramChatId: true },
+                select: { id: true, name: true, telegramChatId: true },
               });
 
               // เช็คว่าผู้เปิด PR กับผู้ถาม เป็นคนเดียวกันไหม (เทียบ chatId)
-              // askerChatId ถูก set ไว้ด้านบนแล้ว (จาก matchedUser ของผู้ถาม)
               const openerChatId = prOpenerUser?.telegramChatId;
 
-              // ส่งเฉพาะถ้าเป็นคนละคน (chatId ต่างกัน)
-              if (prOpenerUser?.telegramChatId && openerChatId !== askerChatId) {
-                const formatName = (name: string | null): string => {
-                  if (!name) return "-";
-                  if (name.includes(',')) {
-                    const parts = name.split(',').map(p => p.trim());
-                    return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
-                  }
-                  return name;
-                };
+              // สร้าง notification สำหรับผู้เปิด PR (ถ้าเป็นคนละคนกับผู้ถาม หรือไม่มี askerChatId)
+              if (prOpenerUser && (!askerChatId || openerChatId !== askerChatId)) {
+                // 1. สร้าง In-App Notification (สำหรับ TopBar)
+                await ctx.db.user_notification.create({
+                  data: {
+                    user_id: prOpenerUser.id,
+                    type: 'qa_answered',
+                    title: `มีการตอบคำถามใน PR #${input.prNo}`,
+                    message: `คำถาม: ${trackingData.note || '-'}\nตอบโดย: ${input.respondedBy || '-'}`,
+                    pr_doc_num: input.prNo,
+                    is_read: false,
+                  },
+                });
+                console.log(`[Notification] Created in-app notification for PR opener: ${prOpenerUser.name}`);
 
-                const formatDateTime = (date: Date | string | null): string => {
-                  if (!date) return "-";
-                  return new Date(date).toLocaleString("th-TH", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
-                };
+                // 2. ส่ง Telegram (ถ้ามี telegramChatId)
+                if (prOpenerUser.telegramChatId) {
+                  const formatName = (name: string | null): string => {
+                    if (!name) return "-";
+                    if (name.includes(',')) {
+                      const parts = name.split(',').map(p => p.trim());
+                      return parts.length >= 2 ? `${parts[1]} ${parts[0]}` : name;
+                    }
+                    return name;
+                  };
 
-                const openerMessage = `🔔 <b>มีการตอบคำถามใน PR ของคุณ</b>
+                  const formatDateTime = (date: Date | string | null): string => {
+                    if (!date) return "-";
+                    return new Date(date).toLocaleString("th-TH", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                  };
+
+                  const openerMessage = `🔔 <b>มีการตอบคำถามใน PR ของคุณ</b>
 
 📋 PR #${input.prNo}
 🏗️ โครงการ: ${pr?.job_name || '-'}
@@ -381,13 +384,14 @@ ${input.responseNote || '-'}
 👤 ตอบโดย: ${formatName(input.respondedBy || null)}
 🕐 เมื่อ: ${formatDateTime(response.responded_at)}`;
 
-                await sendTelegramMessageToUser(prOpenerUser.telegramChatId, openerMessage);
-                console.log(`[Telegram] Sent personal notification to PR opener: ${prOpenerUser.name}`);
+                  await sendTelegramMessageToUser(prOpenerUser.telegramChatId, openerMessage);
+                  console.log(`[Telegram] Sent personal notification to PR opener: ${prOpenerUser.name}`);
+                }
               } else if (openerChatId === askerChatId) {
                 console.log(`[Telegram] PR opener is same as asker, skipping duplicate notification`);
               }
             } catch (openerNotifyError) {
-              console.error('[Telegram] Failed to send personal notification to PR opener:', openerNotifyError);
+              console.error('[Notification] Failed to send notification to PR opener:', openerNotifyError);
             }
           }
         }

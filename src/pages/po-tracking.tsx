@@ -3,6 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { api } from "~/utils/api";
 import { useAuth } from "~/hooks/useAuth";
+import { usePagePermission } from "~/hooks/usePermission";
 import PODetailModal from "~/components/PODetailModal";
 
 // Import shared utils
@@ -11,7 +12,6 @@ import { formatName } from "~/utils/formatters";
 import { getDeliveryStatusStyle, getDeliveryBgStyle, getDeliveryBorderStyle } from "~/utils/deliveryStyles";
 
 export default function POTracking() {
-  const { requireRole } = useAuth();
   const router = useRouter();
   const defaultDates = useMemo(() => getDefaultDateRange(), []);
 
@@ -23,10 +23,14 @@ export default function POTracking() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [shouldFetch, setShouldFetch] = useState(true);
 
-  // Check role access - only Admin, Manager, POPR can access
+  // Check permission access using permission system
+  const { canAccess, loading: permLoading } = usePagePermission('/po-tracking');
+
   useEffect(() => {
-    requireRole(['Admin', 'Manager', 'POPR']);
-  }, [requireRole]);
+    if (!permLoading && !canAccess) {
+      void router.push('/pr-tracking?error=no_permission');
+    }
+  }, [canAccess, permLoading, router]);
   const [showConfirmSync, setShowConfirmSync] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);

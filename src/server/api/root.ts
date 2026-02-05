@@ -7,6 +7,7 @@ import { syncRouter } from "~/server/api/routers/sync";
 import { activityTrailRouter } from "~/server/api/routers/activityTrail";
 import { wSeriesRouter } from "~/server/api/routers/w-series";
 import { kpiRouter } from "~/server/api/routers/kpi";
+import { notificationRouter } from "~/server/api/routers/notification";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -24,6 +25,7 @@ export const appRouter = createTRPCRouter({
   activityTrail: activityTrailRouter,  // Activity Trail Logging
   wSeries: wSeriesRouter,  // W Series (WO, WR, WA, WC)
   kpi: kpiRouter,    // KPI Tracking (Approval & Receive Confirm)
+  notification: notificationRouter,  // User Notifications (TopBar)
 });
 
 // export type definition of API

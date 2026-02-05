@@ -60,11 +60,6 @@ export default function AdminSidebar() {
       icon: "📊",
     },
     {
-      name: "สถิติการใช้งาน",
-      path: "/admin/usage-analytics",
-      icon: "📈",
-    },
-    {
       name: "ประวัติ Sync",
       icon: "🔄",
       subMenu: [

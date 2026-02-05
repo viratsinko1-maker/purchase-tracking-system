@@ -99,6 +99,8 @@ export default function PRDocumentReceiptModal({
       prNo,
       approvalType,
       clearedByRole: user!.role!,
+      clearedByUserId: user!.id,
+      clearedByName: user!.name || user!.username || undefined,
     });
   };
 

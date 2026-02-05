@@ -47,6 +47,7 @@ function ReceiveGoodListContent() {
   const { user } = useAuth();
 
   const [searchText, setSearchText] = useState("");
+  const [statusFilters, setStatusFilters] = useState<Set<"waiting" | "confirmed" | "rejected">>(new Set());
   const [expandedPRs, setExpandedPRs] = useState<Set<string>>(new Set());
 
   // Read search parameter from URL on mount
@@ -125,6 +126,38 @@ function ReceiveGoodListContent() {
       .sort((a, b) => b[1].received_at.getTime() - a[1].received_at.getTime());
   }, [records]);
 
+  // Filter grouped records by status (multi-select)
+  const filteredGroupedRecords = useMemo(() => {
+    // If no filters selected, show all
+    if (statusFilters.size === 0) return groupedRecords;
+
+    return groupedRecords.filter(([_, group]) => {
+      const allConfirmed = group.waitingCount === 0 && group.rejectedCount === 0 && group.confirmedCount > 0;
+      const hasRejected = group.rejectedCount > 0;
+      const hasWaiting = group.waitingCount > 0;
+
+      // Match any selected filter (OR logic)
+      if (statusFilters.has("waiting") && hasWaiting) return true;
+      if (statusFilters.has("confirmed") && allConfirmed) return true;
+      if (statusFilters.has("rejected") && hasRejected) return true;
+
+      return false;
+    });
+  }, [groupedRecords, statusFilters]);
+
+  // Toggle filter selection
+  const toggleStatusFilter = (status: "waiting" | "confirmed" | "rejected") => {
+    setStatusFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
   // Delete mutation (multiple items)
   const deleteMutation = api.pr.deleteMultipleReceived.useMutation({
     onSuccess: (data) => {
@@ -155,6 +188,7 @@ function ReceiveGoodListContent() {
     deleteSingleMutation.mutate({
       id: itemToDelete.id,
       deletedBy: user.name || user.username || 'Unknown',
+      deletedByUserId: user.id,
     });
   };
 
@@ -211,7 +245,7 @@ function ReceiveGoodListContent() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedGroups(new Set(groupedRecords.map(([key]) => key)));
+      setSelectedGroups(new Set(filteredGroupedRecords.map(([key]) => key)));
     } else {
       setSelectedGroups(new Set());
     }
@@ -232,6 +266,7 @@ function ReceiveGoodListContent() {
     deleteMutation.mutate({
       ids: idsToDelete,
       deletedBy: user?.name || user?.username || 'Unknown',
+      deletedByUserId: user?.id,
     });
   };
 
@@ -336,17 +371,84 @@ function ReceiveGoodListContent() {
         <div className="rounded-lg bg-white p-6 shadow-sm">
           {/* Search and Actions */}
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search PR, item, requester..."
-                className="w-full md:w-80 rounded-lg border border-gray-300 px-4 py-2 pl-10"
-              />
-              <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* Search input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="Search PR, item, requester..."
+                  className="w-full md:w-80 rounded-lg border border-gray-300 px-4 py-2 pl-10"
+                />
+                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+
+              {/* Status filter - multi-select buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-gray-500">สถานะ:</span>
+                <button
+                  onClick={() => toggleStatusFilter("waiting")}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    statusFilters.has("waiting")
+                      ? "bg-yellow-500 text-white"
+                      : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                  }`}
+                >
+                  <span className={`h-3 w-3 rounded-sm border ${statusFilters.has("waiting") ? "bg-white border-white" : "border-yellow-500"}`}>
+                    {statusFilters.has("waiting") && (
+                      <svg className="h-3 w-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  ยังไม่คอนเฟิม ({groupedRecords.filter(([_, g]) => g.waitingCount > 0).length})
+                </button>
+                <button
+                  onClick={() => toggleStatusFilter("confirmed")}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    statusFilters.has("confirmed")
+                      ? "bg-green-500 text-white"
+                      : "bg-green-100 text-green-700 hover:bg-green-200"
+                  }`}
+                >
+                  <span className={`h-3 w-3 rounded-sm border ${statusFilters.has("confirmed") ? "bg-white border-white" : "border-green-500"}`}>
+                    {statusFilters.has("confirmed") && (
+                      <svg className="h-3 w-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  คอนเฟิมครบแล้ว ({groupedRecords.filter(([_, g]) => g.waitingCount === 0 && g.rejectedCount === 0 && g.confirmedCount > 0).length})
+                </button>
+                <button
+                  onClick={() => toggleStatusFilter("rejected")}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    statusFilters.has("rejected")
+                      ? "bg-red-500 text-white"
+                      : "bg-red-100 text-red-700 hover:bg-red-200"
+                  }`}
+                >
+                  <span className={`h-3 w-3 rounded-sm border ${statusFilters.has("rejected") ? "bg-white border-white" : "border-red-500"}`}>
+                    {statusFilters.has("rejected") && (
+                      <svg className="h-3 w-3 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  มี Reject ({groupedRecords.filter(([_, g]) => g.rejectedCount > 0).length})
+                </button>
+                {statusFilters.size > 0 && (
+                  <button
+                    onClick={() => setStatusFilters(new Set())}
+                    className="text-sm text-gray-500 hover:text-gray-700 underline ml-2"
+                  >
+                    ล้างตัวกรอง
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Admin delete button */}
@@ -371,24 +473,24 @@ function ReceiveGoodListContent() {
           )}
 
           {/* Admin select all */}
-          {isAdmin && groupedRecords.length > 0 && (
+          {isAdmin && filteredGroupedRecords.length > 0 && (
             <div className="mb-4 flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={selectedGroups.size === groupedRecords.length && groupedRecords.length > 0}
+                checked={selectedGroups.size === filteredGroupedRecords.length && filteredGroupedRecords.length > 0}
                 onChange={(e) => handleSelectAll(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300"
               />
-              <span className="text-sm text-gray-600">Select All</span>
+              <span className="text-sm text-gray-600">Select All ({filteredGroupedRecords.length} รายการ)</span>
             </div>
           )}
 
           {/* Grouped Records */}
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-gray-500">Loading...</div>
-          ) : groupedRecords.length > 0 ? (
+          ) : filteredGroupedRecords.length > 0 ? (
             <div className="space-y-4">
-              {groupedRecords.map(([key, group]) => {
+              {filteredGroupedRecords.map(([key, group]) => {
                 // Determine border color based on confirm status
                 const allConfirmed = group.waitingCount === 0 && group.rejectedCount === 0 && group.confirmedCount > 0;
                 const hasRejected = group.rejectedCount > 0;
@@ -468,8 +570,8 @@ function ReceiveGoodListContent() {
                       )}
                     </div>
 
-                    {/* Confirm Good Button */}
-                    {group.batch_key && (
+                    {/* Confirm Good Button - hide when all confirmed */}
+                    {group.batch_key && !allConfirmed && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -482,6 +584,16 @@ function ReceiveGoodListContent() {
                         </svg>
                         Confirm
                       </button>
+                    )}
+
+                    {/* Show completed badge when all confirmed */}
+                    {allConfirmed && (
+                      <span className="flex items-center gap-1 rounded-lg bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        เรียบร้อย
+                      </span>
                     )}
 
                     {/* Received Info */}
@@ -706,10 +818,27 @@ function ReceiveGoodListContent() {
               <span className="mb-4 text-6xl">📋</span>
               <h2 className="mb-2 text-xl font-semibold text-gray-600">No Records</h2>
               <p className="text-center text-gray-500">
-                {searchText ? `No records found for "${searchText}"` : "No receive records yet."}
-                <br />
-                {canAddReceiveGoods && (
-                  <span>Click <strong>+ Add Receive</strong> to record new goods receipt.</span>
+                {statusFilters.size > 0 ? (
+                  <>
+                    ไม่พบรายการที่ตรงกับตัวกรองที่เลือก
+                    <br />
+                    <button
+                      onClick={() => setStatusFilters(new Set())}
+                      className="mt-2 text-indigo-600 hover:text-indigo-800 underline"
+                    >
+                      ล้างตัวกรอง
+                    </button>
+                  </>
+                ) : searchText ? (
+                  `No records found for "${searchText}"`
+                ) : (
+                  <>
+                    No receive records yet.
+                    <br />
+                    {canAddReceiveGoods && (
+                      <span>Click <strong>+ Add Receive</strong> to record new goods receipt.</span>
+                    )}
+                  </>
                 )}
               </p>
             </div>

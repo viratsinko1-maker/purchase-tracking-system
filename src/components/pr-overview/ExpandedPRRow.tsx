@@ -6,9 +6,19 @@
 import { api } from "~/utils/api";
 import { formatName } from "~/utils/formatters";
 
-// PRSummary interface - simplified, receive good data is fetched separately
+// PRSummary interface - 5-step approval from pr_document_receipt
 interface PRSummary {
-  // Reserved for future use
+  // 5-step approval fields
+  requester_approval_by?: string | null;
+  requester_approval_at?: Date | string | null;
+  line_approval_by?: string | null;
+  line_approval_at?: Date | string | null;
+  cost_center_approval_by?: string | null;
+  cost_center_approval_at?: Date | string | null;
+  procurement_approval_by?: string | null;
+  procurement_approval_at?: Date | string | null;
+  vpc_approval_by?: string | null;
+  vpc_approval_at?: Date | string | null;
 }
 
 interface ExpandedPRRowProps {
@@ -279,26 +289,81 @@ export default function ExpandedPRRow({
             )}
           </div>
 
-          {/* Section 4: Receive Good Summary */}
-          <div className="rounded-lg bg-white p-4 shadow-sm">
-            <h4 className="mb-3 text-sm font-semibold text-gray-900">สรุปการรับของ</h4>
-            {receiveGoodData && receiveGoodData.length > 0 ? (
-              <div className="flex flex-wrap gap-3">
-                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
-                  Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
-                </span>
-                <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
-                  Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
-                </span>
-                <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
-                  Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
-                </span>
+          {/* Section 4: Receive Good Summary & 5-Step Approval */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Left: Receive Good Summary */}
+            <div className="rounded-lg bg-white p-4 shadow-sm">
+              <h4 className="mb-3 text-sm font-semibold text-gray-900">สรุปการรับของ</h4>
+              {receiveGoodData && receiveGoodData.length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                    Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
+                  </span>
+                  <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+                    Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
+                  </span>
+                  <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
+                    Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
+                  </span>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-xs text-gray-500">
+                  ยังไม่มีการรับของ
+                </div>
+              )}
+            </div>
+
+            {/* Right: 5-Step Approval Status */}
+            <div className="rounded-lg bg-white p-4 shadow-sm">
+              <h4 className="mb-3 text-sm font-semibold text-gray-900">สถานะการอนุมัติ (5 ขั้นตอน)</h4>
+              <div className="space-y-2">
+                {/* 1. ผู้ขอซื้อ */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">1. ผู้ขอซื้อ</span>
+                  {prSummary.requester_approval_at ? (
+                    <span className="text-green-600 font-medium">✅ {prSummary.requester_approval_by}</span>
+                  ) : (
+                    <span className="text-gray-400">รอดำเนินการ</span>
+                  )}
+                </div>
+                {/* 2. ผู้อนุมัติตามสายงาน */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">2. ผู้อนุมัติตามสายงาน</span>
+                  {prSummary.line_approval_at ? (
+                    <span className="text-green-600 font-medium">✅ {prSummary.line_approval_by}</span>
+                  ) : (
+                    <span className="text-gray-400">รอดำเนินการ</span>
+                  )}
+                </div>
+                {/* 3. ผู้อนุมัติตาม Cost Center */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">3. Cost Center</span>
+                  {prSummary.cost_center_approval_at ? (
+                    <span className="text-green-600 font-medium">✅ {prSummary.cost_center_approval_by}</span>
+                  ) : (
+                    <span className="text-gray-400">รอดำเนินการ</span>
+                  )}
+                </div>
+                {/* 4. งานจัดซื้อพัสดุ */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">4. งานจัดซื้อพัสดุ</span>
+                  {prSummary.procurement_approval_at ? (
+                    <span className="text-green-600 font-medium">✅ {prSummary.procurement_approval_by}</span>
+                  ) : (
+                    <span className="text-gray-400">รอดำเนินการ</span>
+                  )}
+                </div>
+                {/* 5. VP-C */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">5. VP-C</span>
+                  {prSummary.vpc_approval_at ? (
+                    <span className="text-green-600 font-medium">✅ {prSummary.vpc_approval_by}</span>
+                  ) : (
+                    <span className="text-gray-400">รอดำเนินการ</span>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="text-center py-4 text-xs text-gray-500">
-                ยังไม่มีการรับของ
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </td>
