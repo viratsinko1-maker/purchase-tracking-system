@@ -85,7 +85,7 @@ export default function TopBar() {
     });
 
     // Add notifications (goods_ready, qa_answered, etc.)
-    myNotifications.forEach(notif => {
+    myNotifications.forEach((notif: (typeof myNotifications)[number]) => {
       // Map type จาก database ไป type ที่ใช้ใน frontend
       const notifType = notif.type === 'qa_answered' ? 'qa_answered' : 'goods_ready';
       notifications.push({
