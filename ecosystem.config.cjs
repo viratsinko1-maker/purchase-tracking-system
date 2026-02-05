@@ -2,27 +2,27 @@ module.exports = {
   apps: [
     {
       name: 'pr-po-tracking',
-      script: 'server.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx',
-      cwd: './',
+      script: 'npm',
+      args: 'run start',
+      cwd: '/d/VS/network/VS/PR_PO/test-github-clone',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 2025,
+        PORT: 2025
       },
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,           // Auto-restart on crash
-      watch: false,                 // Don't watch file changes in production
-      max_memory_restart: '1G',     // Restart if memory exceeds 1GB
-      min_uptime: '10s',            // Minimum uptime before considering app stable
-      max_restarts: 10,             // Maximum consecutive restarts (prevents restart loop)
-      restart_delay: 4000,          // Wait 4s before restart
+      env_development: {
+        NODE_ENV: 'development',
+        PORT: 2025
+      },
       error_file: './logs/pm2-error.log',
       out_file: './logs/pm2-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      log_file: './logs/pm2-combined.log',
+      time: true,
       merge_logs: true,
-      time: true,                   // Add timestamp to logs
-    },
-  ],
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    }
+  ]
 };
