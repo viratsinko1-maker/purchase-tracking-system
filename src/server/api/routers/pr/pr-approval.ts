@@ -8,6 +8,7 @@ import { sendCustomNotification } from "~/server/services/telegram";
 import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
 import { checkTablePermission } from "~/lib/check-permission";
 import type { PermissionAction } from "~/lib/permissions";
+import { updateKpiApprovalSummary } from "~/server/kpi-approval-aggregator";
 
 // Mapping approval type to permission action
 const APPROVAL_PERMISSION_MAP: Record<string, { tableName: string; action: PermissionAction }> = {
@@ -318,6 +319,16 @@ export const prApprovalRouter = createTRPCRouter({
             ocr_code2: receipt.ocr_code2,
           },
         });
+
+        // Update pre-aggregated summary tables
+        updateKpiApprovalSummary({
+          userId: input.approverUserId || 'unknown',
+          userName: input.approverName,
+          approvalStage: input.approvalType,
+          approvedAt: thaiDateTime,
+          durationMinutes: durationSeconds / 60,
+          isOnTime: isOnTime,
+        }).catch(console.error);
       } catch (kpiError) {
         // Log error but don't fail the approval
         console.error('[KPI] Failed to record approval KPI metric:', kpiError);

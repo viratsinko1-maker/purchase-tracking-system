@@ -2,6 +2,7 @@ import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import { getClientIp } from "~/server/utils/getClientIp";
 import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
+import { updateKpiUsageSummary } from "~/server/kpi-usage-aggregator";
 
 export default async function handler(
   req: NextApiRequest,
@@ -36,6 +37,7 @@ export default async function handler(
         durationMinutes = Math.round(durationSeconds / 60);
 
         // Log session history for usage analytics
+        const logoutType = reason === 'auto_logout_idle' ? 'inactivity' : 'manual';
         await db.session_history.create({
           data: {
             user_id: userId,
@@ -46,8 +48,17 @@ export default async function handler(
             session_end: sessionEnd,
             duration_seconds: durationSeconds,
             duration_minutes: durationSeconds / 60,
-            logout_type: reason === 'auto_logout_idle' ? 'inactivity' : 'manual',
+            logout_type: logoutType,
           },
+        }).catch(console.error);
+
+        // Update KPI usage summary tables (pre-aggregation)
+        updateKpiUsageSummary({
+          userId,
+          userName: userName ?? activeSession.user_name ?? userId,
+          sessionEnd,
+          durationMinutes: durationSeconds / 60,
+          logoutType: logoutType as 'manual' | 'inactivity',
         }).catch(console.error);
       }
 

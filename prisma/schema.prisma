@@ -1087,3 +1087,263 @@ model user_notification {
   @@index([is_read], map: "idx_user_notification_is_read")
   @@index([created_at(sort: Desc)], map: "idx_user_notification_created_at")
 }
+
+/// KPI Usage Daily - สรุปการใช้งานรายวัน (pre-aggregated)
+model kpi_usage_daily {
+  id                      Int      @id @default(autoincrement())
+  user_id                 String   @db.VarChar(255)
+  user_name               String   @db.VarChar(255)
+  date                    DateTime @db.Date
+  total_sessions          Int      @default(0)
+  total_minutes           Decimal  @default(0) @db.Decimal(10, 2)
+  avg_minutes_per_session Decimal  @default(0) @db.Decimal(10, 2)
+  manual_logouts          Int      @default(0)
+  timeout_logouts         Int      @default(0)
+  inactivity_logouts      Int      @default(0)
+  relogin_logouts         Int      @default(0)
+  created_at              DateTime @default(now()) @db.Timestamp(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, date], map: "uq_kpi_usage_daily_user_date")
+  @@index([user_id], map: "idx_kpi_usage_daily_user_id")
+  @@index([date], map: "idx_kpi_usage_daily_date")
+}
+
+/// KPI Usage Weekly - สรุปการใช้งานรายสัปดาห์ (pre-aggregated)
+model kpi_usage_weekly {
+  id                      Int      @id @default(autoincrement())
+  user_id                 String   @db.VarChar(255)
+  user_name               String   @db.VarChar(255)
+  year                    Int
+  week                    Int
+  week_start              DateTime @db.Date
+  week_end                DateTime @db.Date
+  total_sessions          Int      @default(0)
+  total_minutes           Decimal  @default(0) @db.Decimal(10, 2)
+  avg_minutes_per_session Decimal  @default(0) @db.Decimal(10, 2)
+  manual_logouts          Int      @default(0)
+  timeout_logouts         Int      @default(0)
+  inactivity_logouts      Int      @default(0)
+  relogin_logouts         Int      @default(0)
+  created_at              DateTime @default(now()) @db.Timestamp(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, week], map: "uq_kpi_usage_weekly_user_year_week")
+  @@index([user_id], map: "idx_kpi_usage_weekly_user_id")
+  @@index([year, week], map: "idx_kpi_usage_weekly_year_week")
+}
+
+/// KPI Usage Monthly - สรุปการใช้งานรายเดือน (pre-aggregated)
+model kpi_usage_monthly {
+  id                      Int      @id @default(autoincrement())
+  user_id                 String   @db.VarChar(255)
+  user_name               String   @db.VarChar(255)
+  year                    Int
+  month                   Int
+  total_sessions          Int      @default(0)
+  total_minutes           Decimal  @default(0) @db.Decimal(10, 2)
+  avg_minutes_per_session Decimal  @default(0) @db.Decimal(10, 2)
+  manual_logouts          Int      @default(0)
+  timeout_logouts         Int      @default(0)
+  inactivity_logouts      Int      @default(0)
+  relogin_logouts         Int      @default(0)
+  created_at              DateTime @default(now()) @db.Timestamp(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, month], map: "uq_kpi_usage_monthly_user_year_month")
+  @@index([user_id], map: "idx_kpi_usage_monthly_user_id")
+  @@index([year, month], map: "idx_kpi_usage_monthly_year_month")
+}
+
+/// KPI Usage Yearly - สรุปการใช้งานรายปี (pre-aggregated)
+model kpi_usage_yearly {
+  id                      Int      @id @default(autoincrement())
+  user_id                 String   @db.VarChar(255)
+  user_name               String   @db.VarChar(255)
+  year                    Int
+  total_sessions          Int      @default(0)
+  total_minutes           Decimal  @default(0) @db.Decimal(10, 2)
+  avg_minutes_per_session Decimal  @default(0) @db.Decimal(10, 2)
+  manual_logouts          Int      @default(0)
+  timeout_logouts         Int      @default(0)
+  inactivity_logouts      Int      @default(0)
+  relogin_logouts         Int      @default(0)
+  created_at              DateTime @default(now()) @db.Timestamp(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year], map: "uq_kpi_usage_yearly_user_year")
+  @@index([user_id], map: "idx_kpi_usage_yearly_user_id")
+  @@index([year], map: "idx_kpi_usage_yearly_year")
+}
+
+/// KPI Approval Daily - สรุป Approval KPI รายวัน (pre-aggregated, per stage)
+model kpi_approval_daily {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  date               DateTime @db.Date
+  approval_stage     String   @db.VarChar(20)
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, date, approval_stage], map: "uq_kpi_approval_daily")
+  @@index([user_id], map: "idx_kpi_approval_daily_user")
+  @@index([date], map: "idx_kpi_approval_daily_date")
+}
+
+/// KPI Approval Weekly - สรุป Approval KPI รายสัปดาห์ (pre-aggregated, per stage)
+model kpi_approval_weekly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  week               Int
+  week_start         DateTime @db.Date
+  week_end           DateTime @db.Date
+  approval_stage     String   @db.VarChar(20)
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, week, approval_stage], map: "uq_kpi_approval_weekly")
+  @@index([user_id], map: "idx_kpi_approval_weekly_user")
+  @@index([year, week], map: "idx_kpi_approval_weekly_year_week")
+}
+
+/// KPI Approval Monthly - สรุป Approval KPI รายเดือน (pre-aggregated, per stage)
+model kpi_approval_monthly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  month              Int
+  approval_stage     String   @db.VarChar(20)
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, month, approval_stage], map: "uq_kpi_approval_monthly")
+  @@index([user_id], map: "idx_kpi_approval_monthly_user")
+  @@index([year, month], map: "idx_kpi_approval_monthly_year_month")
+}
+
+/// KPI Approval Yearly - สรุป Approval KPI รายปี (pre-aggregated, per stage)
+model kpi_approval_yearly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  approval_stage     String   @db.VarChar(20)
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, approval_stage], map: "uq_kpi_approval_yearly")
+  @@index([user_id], map: "idx_kpi_approval_yearly_user")
+  @@index([year], map: "idx_kpi_approval_yearly_year")
+}
+
+/// KPI Receive Daily - สรุป Receive Confirm KPI รายวัน (pre-aggregated)
+model kpi_receive_daily {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  date               DateTime @db.Date
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  confirmed_count    Int      @default(0)
+  rejected_count     Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, date], map: "uq_kpi_receive_daily")
+  @@index([user_id], map: "idx_kpi_receive_daily_user")
+  @@index([date], map: "idx_kpi_receive_daily_date")
+}
+
+/// KPI Receive Weekly - สรุป Receive Confirm KPI รายสัปดาห์ (pre-aggregated)
+model kpi_receive_weekly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  week               Int
+  week_start         DateTime @db.Date
+  week_end           DateTime @db.Date
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  confirmed_count    Int      @default(0)
+  rejected_count     Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, week], map: "uq_kpi_receive_weekly")
+  @@index([user_id], map: "idx_kpi_receive_weekly_user")
+  @@index([year, week], map: "idx_kpi_receive_weekly_year_week")
+}
+
+/// KPI Receive Monthly - สรุป Receive Confirm KPI รายเดือน (pre-aggregated)
+model kpi_receive_monthly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  month              Int
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  confirmed_count    Int      @default(0)
+  rejected_count     Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year, month], map: "uq_kpi_receive_monthly")
+  @@index([user_id], map: "idx_kpi_receive_monthly_user")
+  @@index([year, month], map: "idx_kpi_receive_monthly_year_month")
+}
+
+/// KPI Receive Yearly - สรุป Receive Confirm KPI รายปี (pre-aggregated)
+model kpi_receive_yearly {
+  id                 Int      @id @default(autoincrement())
+  user_id            String   @db.VarChar(255)
+  user_name          String   @db.VarChar(255)
+  year               Int
+  total_count        Int      @default(0)
+  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  on_time_count      Int      @default(0)
+  late_count         Int      @default(0)
+  confirmed_count    Int      @default(0)
+  rejected_count     Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@unique([user_id, year], map: "uq_kpi_receive_yearly")
+  @@index([user_id], map: "idx_kpi_receive_yearly_user")
+  @@index([year], map: "idx_kpi_receive_yearly_year")
+}

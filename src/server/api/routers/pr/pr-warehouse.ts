@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
 import { sendTelegramMessageToUser } from "~/server/services/telegram";
+import { updateKpiReceiveSummary } from "~/server/kpi-receive-aggregator";
 
 export const prWarehouseRouter = createTRPCRouter({
   // 🔹 บันทึกการรับของ (สามารถรับหลายรายการพร้อมกัน)
@@ -535,6 +536,16 @@ ${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''
                 items_count: batch.itemCount,
               },
             });
+
+            // Update pre-aggregated summary tables
+            updateKpiReceiveSummary({
+              userId: confirmed_by_user_id || 'unknown',
+              userName: confirmed_by,
+              confirmedAt: now,
+              durationMinutes,
+              isOnTime,
+              confirmStatus: batch.confirmStatus as 'confirmed' | 'rejected',
+            }).catch(console.error);
           }
         }
       } catch (kpiError) {

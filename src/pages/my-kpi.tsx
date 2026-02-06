@@ -119,10 +119,25 @@ export default function MyKPIPage() {
   const [selectedQuarter, setSelectedQuarter] = useState<number>(getCurrentQuarter());
 
   // Session period filter (for Usage Stats)
-  const [sessionPeriodType, setSessionPeriodType] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
+  const [sessionPeriodType, setSessionPeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [sessionYear, setSessionYear] = useState<number>(getCurrentThaiYear());
   const [sessionWeek, setSessionWeek] = useState<number>(getWeekOfYear());
   const [sessionMonth, setSessionMonth] = useState<number>(getCurrentMonth());
+  const [sessionDay, setSessionDay] = useState<Date>(new Date());
+
+  // Approval KPI period filter
+  const [approvalPeriodType, setApprovalPeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
+  const [approvalDay, setApprovalDay] = useState<Date>(new Date());
+  const [approvalYear, setApprovalYear] = useState<number>(getCurrentThaiYear());
+  const [approvalWeek, setApprovalWeek] = useState<number>(getWeekOfYear());
+  const [approvalMonth, setApprovalMonth] = useState<number>(getCurrentMonth());
+
+  // Receive KPI period filter
+  const [receivePeriodType, setReceivePeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
+  const [receiveDay, setReceiveDay] = useState<Date>(new Date());
+  const [receiveYear, setReceiveYear] = useState<number>(getCurrentThaiYear());
+  const [receiveWeek, setReceiveWeek] = useState<number>(getWeekOfYear());
+  const [receiveMonth, setReceiveMonth] = useState<number>(getCurrentMonth());
 
   // Build query params
   const queryParams = {
@@ -130,53 +145,6 @@ export default function MyKPIPage() {
     quarter: filterType === 'quarter' ? selectedQuarter : undefined,
   };
 
-  // For detail sections (Approval by stage, Recent Sessions) - use date range based on filter
-  const getDateRange = () => {
-    const gregorianYear = selectedYear - 543;
-    if (filterType === 'quarter') {
-      const startMonth = (selectedQuarter - 1) * 3;
-      const dateFrom = new Date(gregorianYear, startMonth, 1);
-      const dateTo = new Date(gregorianYear, startMonth + 3, 0, 23, 59, 59);
-      return { dateFrom, dateTo };
-    } else {
-      const dateFrom = new Date(gregorianYear, 0, 1);
-      const dateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
-      return { dateFrom, dateTo };
-    }
-  };
-
-  const { dateFrom, dateTo } = getDateRange();
-
-  // Get date range for session period filter
-  const getSessionDateRange = () => {
-    const gregorianYear = sessionYear - 543;
-    if (sessionPeriodType === 'weekly') {
-      const weeks = getWeeksInYear(sessionYear);
-      const week = weeks.find(w => w.week === sessionWeek);
-      if (week) {
-        return {
-          sessionDateFrom: week.start,
-          sessionDateTo: new Date(week.end.getFullYear(), week.end.getMonth(), week.end.getDate(), 23, 59, 59),
-        };
-      }
-      // Fallback to first week
-      return {
-        sessionDateFrom: new Date(gregorianYear, 0, 1),
-        sessionDateTo: new Date(gregorianYear, 0, 7, 23, 59, 59),
-      };
-    } else if (sessionPeriodType === 'monthly') {
-      const sessionDateFrom = new Date(gregorianYear, sessionMonth - 1, 1);
-      const sessionDateTo = new Date(gregorianYear, sessionMonth, 0, 23, 59, 59);
-      return { sessionDateFrom, sessionDateTo };
-    } else {
-      // yearly
-      const sessionDateFrom = new Date(gregorianYear, 0, 1);
-      const sessionDateTo = new Date(gregorianYear, 11, 31, 23, 59, 59);
-      return { sessionDateFrom, sessionDateTo };
-    }
-  };
-
-  const { sessionDateFrom, sessionDateTo } = getSessionDateRange();
   const weeksInYear = getWeeksInYear(sessionYear);
 
   // Fetch Summary KPI (new endpoints with year/quarter)
@@ -195,21 +163,90 @@ export default function MyKPIPage() {
     { enabled: !!user?.id }
   );
 
-  // Fetch detail data (existing endpoints)
-  const { data: approvalKPI, isLoading: loadingApproval } = api.kpi.getMyApprovalKPI.useQuery(
-    { userId: user?.id || '', dateFrom, dateTo },
-    { enabled: !!user?.id }
+  // Pre-aggregated Approval KPI queries
+  const gregorianApprovalYear = approvalYear - 543;
+  const approvalWeeksInYear = getWeeksInYear(approvalYear);
+
+  const { data: approvalKPIDaily, isLoading: loadingApprovalDaily } = api.kpi.getMyApprovalKPIDaily.useQuery(
+    { userId: user?.id || '', date: approvalDay },
+    { enabled: !!user?.id && approvalPeriodType === 'daily' }
+  );
+  const { data: approvalKPIWeekly, isLoading: loadingApprovalWeekly } = api.kpi.getMyApprovalKPIWeekly.useQuery(
+    { userId: user?.id || '', year: gregorianApprovalYear, week: approvalWeek },
+    { enabled: !!user?.id && approvalPeriodType === 'weekly' }
+  );
+  const { data: approvalKPIMonthly, isLoading: loadingApprovalMonthly } = api.kpi.getMyApprovalKPIMonthly.useQuery(
+    { userId: user?.id || '', year: gregorianApprovalYear, month: approvalMonth },
+    { enabled: !!user?.id && approvalPeriodType === 'monthly' }
+  );
+  const { data: approvalKPIYearly, isLoading: loadingApprovalYearly } = api.kpi.getMyApprovalKPIYearly.useQuery(
+    { userId: user?.id || '', year: gregorianApprovalYear },
+    { enabled: !!user?.id && approvalPeriodType === 'yearly' }
   );
 
-  const { data: receiveKPI, isLoading: loadingReceive } = api.kpi.getMyReceiveConfirmKPI.useQuery(
-    { userId: user?.id || '', dateFrom, dateTo },
-    { enabled: !!user?.id }
+  const approvalKPI = approvalPeriodType === 'daily' ? approvalKPIDaily :
+                       approvalPeriodType === 'weekly' ? approvalKPIWeekly :
+                       approvalPeriodType === 'monthly' ? approvalKPIMonthly :
+                       approvalKPIYearly;
+  const loadingApproval = loadingApprovalDaily || loadingApprovalWeekly || loadingApprovalMonthly || loadingApprovalYearly;
+
+  // Pre-aggregated Receive KPI queries
+  const gregorianReceiveYear = receiveYear - 543;
+  const receiveWeeksInYear = getWeeksInYear(receiveYear);
+
+  const { data: receiveKPIDaily, isLoading: loadingReceiveDaily } = api.kpi.getMyReceiveKPIDaily.useQuery(
+    { userId: user?.id || '', date: receiveDay },
+    { enabled: !!user?.id && receivePeriodType === 'daily' }
+  );
+  const { data: receiveKPIWeekly, isLoading: loadingReceiveWeekly } = api.kpi.getMyReceiveKPIWeekly.useQuery(
+    { userId: user?.id || '', year: gregorianReceiveYear, week: receiveWeek },
+    { enabled: !!user?.id && receivePeriodType === 'weekly' }
+  );
+  const { data: receiveKPIMonthly, isLoading: loadingReceiveMonthly } = api.kpi.getMyReceiveKPIMonthly.useQuery(
+    { userId: user?.id || '', year: gregorianReceiveYear, month: receiveMonth },
+    { enabled: !!user?.id && receivePeriodType === 'monthly' }
+  );
+  const { data: receiveKPIYearly, isLoading: loadingReceiveYearly } = api.kpi.getMyReceiveKPIYearly.useQuery(
+    { userId: user?.id || '', year: gregorianReceiveYear },
+    { enabled: !!user?.id && receivePeriodType === 'yearly' }
   );
 
-  const { data: usageStats, isLoading: loadingUsage } = api.kpi.getMyUsageStats.useQuery(
-    { userId: user?.id || '', dateFrom: sessionDateFrom, dateTo: sessionDateTo },
-    { enabled: !!user?.id }
+  const receiveKPI = receivePeriodType === 'daily' ? receiveKPIDaily :
+                     receivePeriodType === 'weekly' ? receiveKPIWeekly :
+                     receivePeriodType === 'monthly' ? receiveKPIMonthly :
+                     receiveKPIYearly;
+  const loadingReceive = loadingReceiveDaily || loadingReceiveWeekly || loadingReceiveMonthly || loadingReceiveYearly;
+
+  // Pre-aggregated usage stats queries (based on period type)
+  const gregorianSessionYear = sessionYear - 543;
+
+  const { data: usageStatsDaily, isLoading: loadingUsageDaily } = api.kpi.getMyUsageStatsDaily.useQuery(
+    { userId: user?.id || '', date: sessionDay },
+    { enabled: !!user?.id && sessionPeriodType === 'daily' }
   );
+
+  const { data: usageStatsWeekly, isLoading: loadingUsageWeekly } = api.kpi.getMyUsageStatsWeekly.useQuery(
+    { userId: user?.id || '', year: gregorianSessionYear, week: sessionWeek },
+    { enabled: !!user?.id && sessionPeriodType === 'weekly' }
+  );
+
+  const { data: usageStatsMonthly, isLoading: loadingUsageMonthly } = api.kpi.getMyUsageStatsMonthly.useQuery(
+    { userId: user?.id || '', year: gregorianSessionYear, month: sessionMonth },
+    { enabled: !!user?.id && sessionPeriodType === 'monthly' }
+  );
+
+  const { data: usageStatsYearly, isLoading: loadingUsageYearly } = api.kpi.getMyUsageStatsYearly.useQuery(
+    { userId: user?.id || '', year: gregorianSessionYear },
+    { enabled: !!user?.id && sessionPeriodType === 'yearly' }
+  );
+
+  // Get current usage stats based on period type
+  const usageStats = sessionPeriodType === 'daily' ? usageStatsDaily :
+                     sessionPeriodType === 'weekly' ? usageStatsWeekly :
+                     sessionPeriodType === 'monthly' ? usageStatsMonthly :
+                     usageStatsYearly;
+
+  const loadingUsage = loadingUsageDaily || loadingUsageWeekly || loadingUsageMonthly || loadingUsageYearly;
 
   const isLoading = loadingApprovalSummary || loadingReceiveSummary || loadingUsageSummary ||
                    loadingApproval || loadingReceive || loadingUsage;
@@ -366,13 +403,14 @@ export default function MyKPIPage() {
                   {/* Period Type Buttons */}
                   <div className="flex gap-1">
                     {[
+                      { key: 'daily', label: 'รายวัน' },
                       { key: 'weekly', label: 'รายสัปดาห์' },
                       { key: 'monthly', label: 'รายเดือน' },
                       { key: 'yearly', label: 'รายปี' },
                     ].map((pt) => (
                       <button
                         key={pt.key}
-                        onClick={() => setSessionPeriodType(pt.key as 'weekly' | 'monthly' | 'yearly')}
+                        onClick={() => setSessionPeriodType(pt.key as 'daily' | 'weekly' | 'monthly' | 'yearly')}
                         className={`rounded px-3 py-1 text-xs font-medium transition ${
                           sessionPeriodType === pt.key
                             ? 'bg-blue-600 text-white'
@@ -384,16 +422,28 @@ export default function MyKPIPage() {
                     ))}
                   </div>
 
-                  {/* Year Select */}
-                  <select
-                    value={sessionYear}
-                    onChange={(e) => setSessionYear(Number(e.target.value))}
-                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
-                  >
-                    {yearOptions.map((y) => (
-                      <option key={y} value={y}>ปี {y}</option>
-                    ))}
-                  </select>
+                  {/* Date Picker (only for daily) */}
+                  {sessionPeriodType === 'daily' && (
+                    <input
+                      type="date"
+                      value={sessionDay.toISOString().split('T')[0]}
+                      onChange={(e) => setSessionDay(new Date(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                    />
+                  )}
+
+                  {/* Year Select (for weekly/monthly/yearly) */}
+                  {sessionPeriodType !== 'daily' && (
+                    <select
+                      value={sessionYear}
+                      onChange={(e) => setSessionYear(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                    >
+                      {yearOptions.map((y) => (
+                        <option key={y} value={y}>ปี {y}</option>
+                      ))}
+                    </select>
+                  )}
 
                   {/* Week Select (only for weekly) */}
                   {sessionPeriodType === 'weekly' && (
@@ -423,7 +473,7 @@ export default function MyKPIPage() {
                 </div>
               </div>
 
-              {usageStats && usageStats.summary.totalSessions > 0 ? (
+              {usageStats?.summary && usageStats.summary.totalSessions > 0 ? (
                 <>
                   {/* Summary Cards */}
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
@@ -456,13 +506,13 @@ export default function MyKPIPage() {
                     </div>
                   </div>
 
-                  {/* Recent Sessions */}
-                  {usageStats.recentSessions.length > 0 && (
+                  {/* Recent Sessions (only for daily view) */}
+                  {sessionPeriodType === 'daily' && usageStatsDaily?.recentSessions && usageStatsDaily.recentSessions.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-3">ประวัติการเข้าใช้งานล่าสุด</h3>
+                      <h3 className="text-sm font-medium text-gray-700 mb-3">ประวัติการเข้าใช้งานวันนี้</h3>
                       <div className="max-h-64 overflow-y-auto">
                         <div className="space-y-2">
-                          {usageStats.recentSessions.slice(0, 10).map((session, idx) => (
+                          {usageStatsDaily.recentSessions.map((session, idx) => (
                             <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
                               <div className="flex items-center gap-3">
                                 <span className="text-gray-400">{idx + 1}.</span>
@@ -477,10 +527,13 @@ export default function MyKPIPage() {
                                 <span className={`rounded-full px-2 py-0.5 text-xs ${
                                   session.logoutType === 'manual' ? 'bg-green-100 text-green-700' :
                                   session.logoutType === 'timeout' ? 'bg-yellow-100 text-yellow-700' :
+                                  session.logoutType === 'inactivity' ? 'bg-orange-100 text-orange-700' :
                                   'bg-red-100 text-red-700'
                                 }`}>
                                   {session.logoutType === 'manual' ? 'กดออก' :
                                    session.logoutType === 'timeout' ? 'หมดเวลา' :
+                                   session.logoutType === 'inactivity' ? 'ไม่มีกิจกรรม' :
+                                   session.logoutType === 'relogin' ? 'ล็อกอินใหม่' :
                                    session.logoutType}
                                 </span>
                               </div>
@@ -488,6 +541,13 @@ export default function MyKPIPage() {
                           ))}
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Info for non-daily views */}
+                  {sessionPeriodType !== 'daily' && (
+                    <div className="text-center text-sm text-gray-500 py-2">
+                      <span className="text-blue-600">💡</span> เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียด session
                     </div>
                   )}
                 </>
@@ -500,62 +560,136 @@ export default function MyKPIPage() {
 
             {/* ===== APPROVAL KPI SECTION ===== */}
             <div className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                KPI การอนุมัติ (แยกตามขั้นตอน)
-              </h2>
+              <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  KPI การอนุมัติ (แยกตามขั้นตอน)
+                </h2>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex gap-1">
+                    {[
+                      { key: 'daily', label: 'รายวัน' },
+                      { key: 'weekly', label: 'รายสัปดาห์' },
+                      { key: 'monthly', label: 'รายเดือน' },
+                      { key: 'yearly', label: 'รายปี' },
+                    ].map((pt) => (
+                      <button
+                        key={pt.key}
+                        onClick={() => setApprovalPeriodType(pt.key as 'daily' | 'weekly' | 'monthly' | 'yearly')}
+                        className={`rounded px-3 py-1 text-xs font-medium transition ${
+                          approvalPeriodType === pt.key
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {pt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {approvalPeriodType === 'daily' && (
+                    <input type="date" value={approvalDay.toISOString().split('T')[0]}
+                      onChange={(e) => setApprovalDay(new Date(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700" />
+                  )}
+                  {approvalPeriodType !== 'daily' && (
+                    <select value={approvalYear} onChange={(e) => setApprovalYear(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {yearOptions.map((y) => (<option key={y} value={y}>ปี {y}</option>))}
+                    </select>
+                  )}
+                  {approvalPeriodType === 'weekly' && (
+                    <select value={approvalWeek} onChange={(e) => setApprovalWeek(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {approvalWeeksInYear.map((w) => (<option key={w.week} value={w.week}>{w.label}</option>))}
+                    </select>
+                  )}
+                  {approvalPeriodType === 'monthly' && (
+                    <select value={approvalMonth} onChange={(e) => setApprovalMonth(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {monthNames.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
+                    </select>
+                  )}
+                </div>
+              </div>
 
               {approvalKPI && Object.keys(approvalKPI.stages).length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นตอน</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวนครั้ง</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">On-time Rate</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {approvalKPI.stageOrder.map((stage) => {
-                        const stats = approvalKPI.stages[stage];
-                        if (!stats) return null;
-                        return (
-                          <tr key={stage} className="hover:bg-gray-50">
-                            <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
-                              {approvalKPI.stageNames[stage as keyof typeof approvalKPI.stageNames]}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
-                              {stats.count}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
-                              {formatDuration(stats.avgMinutes)}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">
-                              {stats.onTimeCount}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">
-                              {stats.lateCount}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center">
-                              {stats.onTimeRate !== null ? (
-                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(stats.onTimeRate)}`}>
-                                  {stats.onTimeRate}%
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นตอน</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวนครั้ง</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">On-time Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {approvalKPI.stageOrder.map((stage) => {
+                          const stats = approvalKPI.stages[stage];
+                          if (!stats) return null;
+                          return (
+                            <tr key={stage} className="hover:bg-gray-50">
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                                {approvalKPI.stageNames[stage as keyof typeof approvalKPI.stageNames]}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{stats.count}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(stats.avgMinutes)}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{stats.onTimeCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{stats.lateCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center">
+                                {stats.onTimeRate !== null ? (
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(stats.onTimeRate)}`}>
+                                    {stats.onTimeRate}%
+                                  </span>
+                                ) : (<span className="text-gray-400">-</span>)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Detail records (daily only) */}
+                  {approvalPeriodType === 'daily' && approvalKPIDaily?.details && approvalKPIDaily.details.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการอนุมัติวันนี้</h3>
+                      <div className="max-h-64 overflow-y-auto space-y-2">
+                        {approvalKPIDaily.details.map((d, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-400">{idx + 1}.</span>
+                              <span className="text-gray-900">PR #{d.prDocNum}</span>
+                              <span className="text-gray-500">({d.stageName})</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-gray-700">{d.durationMinutes} นาที</span>
+                              {d.isOnTime !== null && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                  d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
                                 </span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
                               )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {approvalPeriodType !== 'daily' && (
+                    <div className="text-center text-sm text-gray-500 py-2 mt-2">
+                      เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียดการอนุมัติ
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="py-8 text-center text-gray-500">
                   ยังไม่มีข้อมูล KPI การอนุมัติในช่วงเวลานี้
@@ -565,51 +699,131 @@ export default function MyKPIPage() {
 
             {/* ===== RECEIVE CONFIRM KPI SECTION ===== */}
             <div className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                </svg>
-                KPI การยืนยันรับของ
-              </h2>
+              <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  KPI การยืนยันรับของ
+                </h2>
 
-              {receiveKPI && receiveKPI.totalCount > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {/* Total Count */}
-                  <div className="rounded-lg bg-gray-50 p-4">
-                    <div className="text-sm text-gray-500">จำนวนครั้งทั้งหมด</div>
-                    <div className="mt-1 text-2xl font-bold text-gray-900">{receiveKPI.totalCount}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex gap-1">
+                    {[
+                      { key: 'daily', label: 'รายวัน' },
+                      { key: 'weekly', label: 'รายสัปดาห์' },
+                      { key: 'monthly', label: 'รายเดือน' },
+                      { key: 'yearly', label: 'รายปี' },
+                    ].map((pt) => (
+                      <button
+                        key={pt.key}
+                        onClick={() => setReceivePeriodType(pt.key as 'daily' | 'weekly' | 'monthly' | 'yearly')}
+                        className={`rounded px-3 py-1 text-xs font-medium transition ${
+                          receivePeriodType === pt.key
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {pt.label}
+                      </button>
+                    ))}
                   </div>
-
-                  {/* Average Time */}
-                  <div className="rounded-lg bg-blue-50 p-4">
-                    <div className="text-sm text-blue-600">เวลาเฉลี่ย</div>
-                    <div className="mt-1 text-2xl font-bold text-blue-700">
-                      {formatDuration(receiveKPI.avgMinutes)}
-                    </div>
-                  </div>
-
-                  {/* On-time Rate */}
-                  <div className="rounded-lg bg-green-50 p-4">
-                    <div className="text-sm text-green-600">On-time Rate</div>
-                    <div className="mt-1 text-2xl font-bold text-green-700">
-                      {receiveKPI.onTimeRate !== null ? `${receiveKPI.onTimeRate}%` : '-'}
-                    </div>
-                    <div className="text-xs text-green-600 mt-1">
-                      {receiveKPI.onTimeCount} ตรงเวลา / {receiveKPI.lateCount} เกินเวลา
-                    </div>
-                  </div>
-
-                  {/* Confirmed/Rejected */}
-                  <div className="rounded-lg bg-purple-50 p-4">
-                    <div className="text-sm text-purple-600">สถานะการยืนยัน</div>
-                    <div className="mt-1 flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-green-600">{receiveKPI.confirmedCount}</span>
-                      <span className="text-gray-400">/</span>
-                      <span className="text-xl font-bold text-red-600">{receiveKPI.rejectedCount}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">ยืนยัน / ปฏิเสธ</div>
-                  </div>
+                  {receivePeriodType === 'daily' && (
+                    <input type="date" value={receiveDay.toISOString().split('T')[0]}
+                      onChange={(e) => setReceiveDay(new Date(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700" />
+                  )}
+                  {receivePeriodType !== 'daily' && (
+                    <select value={receiveYear} onChange={(e) => setReceiveYear(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {yearOptions.map((y) => (<option key={y} value={y}>ปี {y}</option>))}
+                    </select>
+                  )}
+                  {receivePeriodType === 'weekly' && (
+                    <select value={receiveWeek} onChange={(e) => setReceiveWeek(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {receiveWeeksInYear.map((w) => (<option key={w.week} value={w.week}>{w.label}</option>))}
+                    </select>
+                  )}
+                  {receivePeriodType === 'monthly' && (
+                    <select value={receiveMonth} onChange={(e) => setReceiveMonth(Number(e.target.value))}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
+                      {monthNames.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
+                    </select>
+                  )}
                 </div>
+              </div>
+
+              {receiveKPI?.summary && receiveKPI.summary.totalCount > 0 ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-lg bg-gray-50 p-4">
+                      <div className="text-sm text-gray-500">จำนวนครั้งทั้งหมด</div>
+                      <div className="mt-1 text-2xl font-bold text-gray-900">{receiveKPI.summary.totalCount}</div>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 p-4">
+                      <div className="text-sm text-blue-600">เวลาเฉลี่ย</div>
+                      <div className="mt-1 text-2xl font-bold text-blue-700">{formatDuration(receiveKPI.summary.avgMinutes)}</div>
+                    </div>
+                    <div className="rounded-lg bg-green-50 p-4">
+                      <div className="text-sm text-green-600">On-time Rate</div>
+                      <div className="mt-1 text-2xl font-bold text-green-700">
+                        {receiveKPI.summary.onTimeRate !== null ? `${receiveKPI.summary.onTimeRate}%` : '-'}
+                      </div>
+                      <div className="text-xs text-green-600 mt-1">
+                        {receiveKPI.summary.onTimeCount} ตรงเวลา / {receiveKPI.summary.lateCount} เกินเวลา
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-purple-50 p-4">
+                      <div className="text-sm text-purple-600">สถานะการยืนยัน</div>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-xl font-bold text-green-600">{receiveKPI.summary.confirmedCount}</span>
+                        <span className="text-gray-400">/</span>
+                        <span className="text-xl font-bold text-red-600">{receiveKPI.summary.rejectedCount}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">ยืนยัน / ปฏิเสธ</div>
+                    </div>
+                  </div>
+
+                  {/* Detail records (daily only) */}
+                  {receivePeriodType === 'daily' && receiveKPIDaily?.details && receiveKPIDaily.details.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการยืนยันรับของวันนี้</h3>
+                      <div className="max-h-64 overflow-y-auto space-y-2">
+                        {receiveKPIDaily.details.map((d, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-400">{idx + 1}.</span>
+                              <span className="text-gray-900">PR #{d.prDocNum}</span>
+                              <span className="text-gray-500">({d.itemsCount} รายการ)</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-gray-700">{d.durationMinutes} นาที</span>
+                              <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                d.confirmStatus === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {d.confirmStatus === 'confirmed' ? 'ยืนยัน' : 'ปฏิเสธ'}
+                              </span>
+                              {d.isOnTime !== null && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                  d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {receivePeriodType !== 'daily' && (
+                    <div className="text-center text-sm text-gray-500 py-2 mt-2">
+                      เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียดการยืนยันรับของ
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="py-8 text-center text-gray-500">
                   ยังไม่มีข้อมูล KPI การยืนยันรับของในช่วงเวลานี้

@@ -9,6 +9,365 @@ export const kpiRouter = createTRPCRouter({
   // PERSONAL KPI (สำหรับดู KPI ของตัวเอง)
   // =====================================================
 
+  // =====================================================
+  // PERSONAL APPROVAL KPI - Pre-aggregated (รายวัน/สัปดาห์/เดือน/ปี)
+  // =====================================================
+
+  // 🔹 Daily Approval KPI (summary per stage + detail records)
+  getMyApprovalKPIDaily: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      date: z.date(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, date } = input;
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const nextDay = new Date(dateOnly);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      // Get pre-aggregated summary per stage
+      const summaries = await ctx.db.kpi_approval_daily.findMany({
+        where: { user_id: userId, date: dateOnly },
+      });
+
+      // Get detail records for this day
+      const details = await ctx.db.approval_kpi_metric.findMany({
+        where: {
+          user_id: userId,
+          approved_at: { gte: dateOnly, lt: nextDay },
+        },
+        orderBy: { approved_at: 'desc' },
+      });
+
+      const stageOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'];
+      const stageNames: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
+        line: 'ผู้อนุมัติตามสายงาน',
+        cost_center: 'ผู้อนุมัติตาม Cost Center',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      const stages: Record<string, {
+        count: number;
+        avgMinutes: number | null;
+        onTimeCount: number;
+        lateCount: number;
+        onTimeRate: number | null;
+      }> = {};
+
+      for (const s of summaries) {
+        const total = s.on_time_count + s.late_count;
+        stages[s.approval_stage] = {
+          count: s.total_count,
+          avgMinutes: Number(s.avg_duration_min),
+          onTimeCount: s.on_time_count,
+          lateCount: s.late_count,
+          onTimeRate: total > 0 ? Math.round((s.on_time_count / total) * 100) : null,
+        };
+      }
+
+      return {
+        stages,
+        stageOrder,
+        stageNames,
+        details: details.map(d => ({
+          prDocNum: d.pr_doc_num,
+          stage: d.approval_stage,
+          stageName: stageNames[d.approval_stage] || d.approval_stage,
+          approvedAt: d.approved_at,
+          durationMinutes: Math.round(Number(d.duration_minutes)),
+          isOnTime: d.is_on_time,
+        })),
+      };
+    }),
+
+  // 🔹 Weekly Approval KPI (summary per stage only)
+  getMyApprovalKPIWeekly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+      week: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, week } = input;
+
+      const summaries = await ctx.db.kpi_approval_weekly.findMany({
+        where: { user_id: userId, year, week },
+      });
+
+      const stageOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'];
+      const stageNames: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
+        line: 'ผู้อนุมัติตามสายงาน',
+        cost_center: 'ผู้อนุมัติตาม Cost Center',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      const stages: Record<string, {
+        count: number;
+        avgMinutes: number | null;
+        onTimeCount: number;
+        lateCount: number;
+        onTimeRate: number | null;
+      }> = {};
+
+      for (const s of summaries) {
+        const total = s.on_time_count + s.late_count;
+        stages[s.approval_stage] = {
+          count: s.total_count,
+          avgMinutes: Number(s.avg_duration_min),
+          onTimeCount: s.on_time_count,
+          lateCount: s.late_count,
+          onTimeRate: total > 0 ? Math.round((s.on_time_count / total) * 100) : null,
+        };
+      }
+
+      return { stages, stageOrder, stageNames };
+    }),
+
+  // 🔹 Monthly Approval KPI (summary per stage only)
+  getMyApprovalKPIMonthly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+      month: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, month } = input;
+
+      const summaries = await ctx.db.kpi_approval_monthly.findMany({
+        where: { user_id: userId, year, month },
+      });
+
+      const stageOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'];
+      const stageNames: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
+        line: 'ผู้อนุมัติตามสายงาน',
+        cost_center: 'ผู้อนุมัติตาม Cost Center',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      const stages: Record<string, {
+        count: number;
+        avgMinutes: number | null;
+        onTimeCount: number;
+        lateCount: number;
+        onTimeRate: number | null;
+      }> = {};
+
+      for (const s of summaries) {
+        const total = s.on_time_count + s.late_count;
+        stages[s.approval_stage] = {
+          count: s.total_count,
+          avgMinutes: Number(s.avg_duration_min),
+          onTimeCount: s.on_time_count,
+          lateCount: s.late_count,
+          onTimeRate: total > 0 ? Math.round((s.on_time_count / total) * 100) : null,
+        };
+      }
+
+      return { stages, stageOrder, stageNames };
+    }),
+
+  // 🔹 Yearly Approval KPI (summary per stage only)
+  getMyApprovalKPIYearly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year } = input;
+
+      const summaries = await ctx.db.kpi_approval_yearly.findMany({
+        where: { user_id: userId, year },
+      });
+
+      const stageOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'];
+      const stageNames: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
+        line: 'ผู้อนุมัติตามสายงาน',
+        cost_center: 'ผู้อนุมัติตาม Cost Center',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      const stages: Record<string, {
+        count: number;
+        avgMinutes: number | null;
+        onTimeCount: number;
+        lateCount: number;
+        onTimeRate: number | null;
+      }> = {};
+
+      for (const s of summaries) {
+        const total = s.on_time_count + s.late_count;
+        stages[s.approval_stage] = {
+          count: s.total_count,
+          avgMinutes: Number(s.avg_duration_min),
+          onTimeCount: s.on_time_count,
+          lateCount: s.late_count,
+          onTimeRate: total > 0 ? Math.round((s.on_time_count / total) * 100) : null,
+        };
+      }
+
+      return { stages, stageOrder, stageNames };
+    }),
+
+  // =====================================================
+  // PERSONAL RECEIVE KPI - Pre-aggregated (รายวัน/สัปดาห์/เดือน/ปี)
+  // =====================================================
+
+  // 🔹 Daily Receive Confirm KPI (summary + detail records)
+  getMyReceiveKPIDaily: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      date: z.date(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, date } = input;
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const nextDay = new Date(dateOnly);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      // Get pre-aggregated summary
+      const summary = await ctx.db.kpi_receive_daily.findUnique({
+        where: {
+          user_id_date: { user_id: userId, date: dateOnly },
+        },
+      });
+
+      // Get detail records for this day
+      const details = await ctx.db.receive_confirm_kpi_metric.findMany({
+        where: {
+          user_id: userId,
+          confirmed_at: { gte: dateOnly, lt: nextDay },
+        },
+        orderBy: { confirmed_at: 'desc' },
+      });
+
+      const totalWithSLA = (summary?.on_time_count ?? 0) + (summary?.late_count ?? 0);
+
+      return {
+        summary: summary ? {
+          totalCount: summary.total_count,
+          avgMinutes: Number(summary.avg_duration_min),
+          onTimeCount: summary.on_time_count,
+          lateCount: summary.late_count,
+          onTimeRate: totalWithSLA > 0 ? Math.round((summary.on_time_count / totalWithSLA) * 100) : null,
+          confirmedCount: summary.confirmed_count,
+          rejectedCount: summary.rejected_count,
+        } : null,
+        details: details.map(d => ({
+          prDocNum: d.pr_doc_num,
+          batchKey: d.batch_key,
+          receivedAt: d.received_at,
+          confirmedAt: d.confirmed_at,
+          durationMinutes: Math.round(Number(d.duration_minutes)),
+          isOnTime: d.is_on_time,
+          confirmStatus: d.confirm_status,
+          itemsCount: d.items_count,
+        })),
+      };
+    }),
+
+  // 🔹 Weekly Receive Confirm KPI (summary only)
+  getMyReceiveKPIWeekly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+      week: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, week } = input;
+
+      const summary = await ctx.db.kpi_receive_weekly.findUnique({
+        where: {
+          user_id_year_week: { user_id: userId, year, week },
+        },
+      });
+
+      if (!summary) return { summary: null };
+
+      const totalWithSLA = summary.on_time_count + summary.late_count;
+      return {
+        summary: {
+          totalCount: summary.total_count,
+          avgMinutes: Number(summary.avg_duration_min),
+          onTimeCount: summary.on_time_count,
+          lateCount: summary.late_count,
+          onTimeRate: totalWithSLA > 0 ? Math.round((summary.on_time_count / totalWithSLA) * 100) : null,
+          confirmedCount: summary.confirmed_count,
+          rejectedCount: summary.rejected_count,
+        },
+      };
+    }),
+
+  // 🔹 Monthly Receive Confirm KPI (summary only)
+  getMyReceiveKPIMonthly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+      month: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, month } = input;
+
+      const summary = await ctx.db.kpi_receive_monthly.findUnique({
+        where: {
+          user_id_year_month: { user_id: userId, year, month },
+        },
+      });
+
+      if (!summary) return { summary: null };
+
+      const totalWithSLA = summary.on_time_count + summary.late_count;
+      return {
+        summary: {
+          totalCount: summary.total_count,
+          avgMinutes: Number(summary.avg_duration_min),
+          onTimeCount: summary.on_time_count,
+          lateCount: summary.late_count,
+          onTimeRate: totalWithSLA > 0 ? Math.round((summary.on_time_count / totalWithSLA) * 100) : null,
+          confirmedCount: summary.confirmed_count,
+          rejectedCount: summary.rejected_count,
+        },
+      };
+    }),
+
+  // 🔹 Yearly Receive Confirm KPI (summary only)
+  getMyReceiveKPIYearly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year } = input;
+
+      const summary = await ctx.db.kpi_receive_yearly.findUnique({
+        where: {
+          user_id_year: { user_id: userId, year },
+        },
+      });
+
+      if (!summary) return { summary: null };
+
+      const totalWithSLA = summary.on_time_count + summary.late_count;
+      return {
+        summary: {
+          totalCount: summary.total_count,
+          avgMinutes: Number(summary.avg_duration_min),
+          onTimeCount: summary.on_time_count,
+          lateCount: summary.late_count,
+          onTimeRate: totalWithSLA > 0 ? Math.round((summary.on_time_count / totalWithSLA) * 100) : null,
+          confirmedCount: summary.confirmed_count,
+          rejectedCount: summary.rejected_count,
+        },
+      };
+    }),
+
   // 🔹 ดึง Approval KPI ของ user ที่ login
   getMyApprovalKPI: createTableProcedure('my_kpi', 'read')
     .input(z.object({
@@ -1034,6 +1393,185 @@ export const kpiRouter = createTRPCRouter({
           logoutType: s.logout_type,
           ipAddress: s.ip_address,
         })),
+      };
+    }),
+
+  // =====================================================
+  // PERSONAL USAGE STATS - Pre-aggregated (รายวัน/สัปดาห์/เดือน/ปี)
+  // =====================================================
+
+  // 🔹 Daily Usage Stats (summary + session list)
+  getMyUsageStatsDaily: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      date: z.date(), // วันที่ต้องการดู
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, date } = input;
+
+      // Get date only (strip time)
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const nextDay = new Date(dateOnly);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      // Get pre-aggregated summary
+      const summary = await ctx.db.kpi_usage_daily.findUnique({
+        where: {
+          user_id_date: {
+            user_id: userId,
+            date: dateOnly,
+          },
+        },
+      });
+
+      // Get session list for this day
+      const sessions = await ctx.db.session_history.findMany({
+        where: {
+          user_id: userId,
+          session_end: {
+            gte: dateOnly,
+            lt: nextDay,
+          },
+        },
+        select: {
+          session_start: true,
+          session_end: true,
+          duration_minutes: true,
+          logout_type: true,
+          ip_address: true,
+        },
+        orderBy: { session_start: 'desc' },
+      });
+
+      return {
+        summary: summary ? {
+          totalSessions: summary.total_sessions,
+          totalMinutes: Math.round(Number(summary.total_minutes)),
+          totalHours: Math.round(Number(summary.total_minutes) / 60),
+          avgMinutesPerSession: Math.round(Number(summary.avg_minutes_per_session)),
+          manualLogouts: summary.manual_logouts,
+          timeoutLogouts: summary.timeout_logouts,
+          inactivityLogouts: summary.inactivity_logouts,
+          reloginLogouts: summary.relogin_logouts,
+        } : {
+          totalSessions: 0,
+          totalMinutes: 0,
+          totalHours: 0,
+          avgMinutesPerSession: 0,
+          manualLogouts: 0,
+          timeoutLogouts: 0,
+          inactivityLogouts: 0,
+          reloginLogouts: 0,
+        },
+        recentSessions: sessions.map(s => ({
+          sessionStart: s.session_start,
+          sessionEnd: s.session_end,
+          durationMinutes: Math.round(Number(s.duration_minutes)),
+          logoutType: s.logout_type,
+          ipAddress: s.ip_address,
+        })),
+      };
+    }),
+
+  // 🔹 Weekly Usage Stats (summary only - from pre-aggregated table)
+  getMyUsageStatsWeekly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(), // ค.ศ.
+      week: z.number(), // 1-53
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, week } = input;
+
+      const summary = await ctx.db.kpi_usage_weekly.findUnique({
+        where: {
+          user_id_year_week: {
+            user_id: userId,
+            year: year,
+            week: week,
+          },
+        },
+      });
+
+      return {
+        summary: summary ? {
+          totalSessions: summary.total_sessions,
+          totalMinutes: Math.round(Number(summary.total_minutes)),
+          totalHours: Math.round(Number(summary.total_minutes) / 60),
+          avgMinutesPerSession: Math.round(Number(summary.avg_minutes_per_session)),
+          manualLogouts: summary.manual_logouts,
+          timeoutLogouts: summary.timeout_logouts,
+          inactivityLogouts: summary.inactivity_logouts,
+          reloginLogouts: summary.relogin_logouts,
+          weekStart: summary.week_start,
+          weekEnd: summary.week_end,
+        } : null,
+      };
+    }),
+
+  // 🔹 Monthly Usage Stats (summary only - from pre-aggregated table)
+  getMyUsageStatsMonthly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(), // ค.ศ.
+      month: z.number(), // 1-12
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year, month } = input;
+
+      const summary = await ctx.db.kpi_usage_monthly.findUnique({
+        where: {
+          user_id_year_month: {
+            user_id: userId,
+            year: year,
+            month: month,
+          },
+        },
+      });
+
+      return {
+        summary: summary ? {
+          totalSessions: summary.total_sessions,
+          totalMinutes: Math.round(Number(summary.total_minutes)),
+          totalHours: Math.round(Number(summary.total_minutes) / 60),
+          avgMinutesPerSession: Math.round(Number(summary.avg_minutes_per_session)),
+          manualLogouts: summary.manual_logouts,
+          timeoutLogouts: summary.timeout_logouts,
+          inactivityLogouts: summary.inactivity_logouts,
+          reloginLogouts: summary.relogin_logouts,
+        } : null,
+      };
+    }),
+
+  // 🔹 Yearly Usage Stats (summary only - from pre-aggregated table)
+  getMyUsageStatsYearly: createTableProcedure('my_kpi', 'read')
+    .input(z.object({
+      userId: z.string(),
+      year: z.number(), // ค.ศ.
+    }))
+    .query(async ({ ctx, input }) => {
+      const { userId, year } = input;
+
+      const summary = await ctx.db.kpi_usage_yearly.findUnique({
+        where: {
+          user_id_year: {
+            user_id: userId,
+            year: year,
+          },
+        },
+      });
+
+      return {
+        summary: summary ? {
+          totalSessions: summary.total_sessions,
+          totalMinutes: Math.round(Number(summary.total_minutes)),
+          totalHours: Math.round(Number(summary.total_minutes) / 60),
+          avgMinutesPerSession: Math.round(Number(summary.avg_minutes_per_session)),
+          manualLogouts: summary.manual_logouts,
+          timeoutLogouts: summary.timeout_logouts,
+          inactivityLogouts: summary.inactivity_logouts,
+          reloginLogouts: summary.relogin_logouts,
+        } : null,
       };
     }),
 

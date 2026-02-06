@@ -9,6 +9,7 @@
 
 import { db } from "~/server/db";
 import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
+import { updateKpiUsageSummary } from "~/server/kpi-usage-aggregator";
 
 // Configuration
 const CHECK_INTERVAL = 2 * 60 * 1000; // Check every 2 minutes
@@ -64,6 +65,15 @@ async function cleanupStaleSessions() {
             duration_minutes: durationMinutes,
             logout_type: 'timeout',
           },
+        });
+
+        // Update KPI usage summary tables (pre-aggregation)
+        await updateKpiUsageSummary({
+          userId: session.user_id,
+          userName: session.user_name ?? session.user_id,
+          sessionEnd,
+          durationMinutes,
+          logoutType: 'timeout',
         });
 
         // Log logout in audit trail
