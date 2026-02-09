@@ -10,13 +10,14 @@ import PRDetailModal from "~/components/PRDetailModal";
 import PRDocumentReceiptModal from "~/components/PRDocumentReceiptModal";
 import PODetailModal from "~/components/PODetailModal";
 import WODetailModal from "~/components/WODetailModal";
+import PageGuard from "~/components/PageGuard";
 
 // Import shared utils
 import { formatName } from "~/utils/formatters";
 import { useClickOutside } from "~/hooks/useClickOutside";
 import { ExpandedPRRow } from "~/components/pr-overview";
 
-export default function PROverviewPage() {
+function PROverviewContent() {
   const [dateFrom, setDateFrom] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30); // ย้อนหลัง 30 วัน
@@ -782,5 +783,14 @@ export default function PROverviewPage() {
         />
       )}
     </>
+  );
+}
+
+// Export default with PageGuard wrapper
+export default function PROverviewPage() {
+  return (
+    <PageGuard action="pr_tracking.read" pageName="PR Overview">
+      <PROverviewContent />
+    </PageGuard>
   );
 }

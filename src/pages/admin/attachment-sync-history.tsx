@@ -232,7 +232,7 @@ function AttachmentSyncHistoryContent() {
 // Export default with PageGuard wrapper
 export default function AttachmentSyncHistoryPage() {
   return (
-    <PageGuard action="admin_sync_attachment.read" pageName="Attachment Sync History">
+    <PageGuard action="admin_sync_attach.read" pageName="Attachment Sync History">
       <AttachmentSyncHistoryContent />
     </PageGuard>
   );

@@ -544,6 +544,7 @@ export interface PagePermission {
  */
 export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   '/pr-tracking': { table: 'pr_tracking', action: 'read' },
+  '/pr-overview': { table: 'pr_tracking', action: 'read' },
   '/pr-approval': { table: 'pr_approval', action: 'read' },
   '/pr-qa': { table: 'pr_qa', action: 'read' },
   '/po-tracking': { table: 'po_tracking', action: 'read' },
@@ -565,6 +566,7 @@ export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   '/admin/attachment-sync-history': { table: 'admin_sync_attach', action: 'read' },
   '/admin/workflow': { table: 'admin_workflow', action: 'read' },
   '/admin/kpi-dashboard': { table: 'admin_kpi', action: 'read' },
+  '/admin/wo-sync-history': { table: 'admin_sync_wo', action: 'read' },
 } as const;
 
 // =====================================================
