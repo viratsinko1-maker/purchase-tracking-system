@@ -141,7 +141,7 @@ async function handler(
 
           // Deactivate users that no longer exist in TMK_PDPJ01
           const allLocalUsers = await db.user_production.findMany({
-            where: { isActive: true },
+            where: { isActive: true, sourceId: { not: null } },
           });
 
           for (const localUser of allLocalUsers) {

@@ -38,69 +38,8 @@ const getCurrentThaiYear = () => new Date().getFullYear() + 543;
 // Get current quarter (1-4)
 const getCurrentQuarter = () => Math.ceil((new Date().getMonth() + 1) / 3);
 
-// Get current month (1-12)
-const getCurrentMonth = () => new Date().getMonth() + 1;
-
-// Get current week of year (matches getWeeksInYear calculation)
-const getWeekOfYear = (date: Date = new Date()) => {
-  const year = date.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
-  // Calculate days since start of year
-  const diffTime = date.getTime() - startOfYear.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  // Week number = floor(days / 7) + 1
-  return Math.floor(diffDays / 7) + 1;
-};
-
-// Generate weeks for a year (Thai year)
-const getWeeksInYear = (thaiYear: number) => {
-  const gregorianYear = thaiYear - 543;
-  const weeks: { week: number; start: Date; end: Date; label: string }[] = [];
-  const startOfYear = new Date(gregorianYear, 0, 1);
-  const endOfYear = new Date(gregorianYear, 11, 31);
-
-  let currentDate = new Date(startOfYear);
-  let weekNum = 1;
-
-  while (currentDate <= endOfYear && weekNum <= 53) {
-    const weekStart = new Date(currentDate);
-    const weekEnd = new Date(currentDate);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-
-    // Clamp to end of year
-    if (weekEnd > endOfYear) {
-      weekEnd.setTime(endOfYear.getTime());
-    }
-
-    weeks.push({
-      week: weekNum,
-      start: weekStart,
-      end: weekEnd,
-      label: `สัปดาห์ ${weekNum} (${weekStart.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`,
-    });
-
-    currentDate.setDate(currentDate.getDate() + 7);
-    weekNum++;
-  }
-
-  return weeks;
-};
-
-// Month names
-const monthNames = [
-  { value: 1, label: 'มกราคม' },
-  { value: 2, label: 'กุมภาพันธ์' },
-  { value: 3, label: 'มีนาคม' },
-  { value: 4, label: 'เมษายน' },
-  { value: 5, label: 'พฤษภาคม' },
-  { value: 6, label: 'มิถุนายน' },
-  { value: 7, label: 'กรกฎาคม' },
-  { value: 8, label: 'สิงหาคม' },
-  { value: 9, label: 'กันยายน' },
-  { value: 10, label: 'ตุลาคม' },
-  { value: 11, label: 'พฤศจิกายน' },
-  { value: 12, label: 'ธันวาคม' },
-];
+// Short month names for table display
+const shortMonthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
 // On-time rate color
 const getOnTimeRateColor = (rate: number | null) => {
@@ -121,31 +60,23 @@ export default function MyKPIPage() {
   // Session period filter (for Usage Stats)
   const [sessionPeriodType, setSessionPeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [sessionYear, setSessionYear] = useState<number>(getCurrentThaiYear());
-  const [sessionWeek, setSessionWeek] = useState<number>(getWeekOfYear());
-  const [sessionMonth, setSessionMonth] = useState<number>(getCurrentMonth());
   const [sessionDay, setSessionDay] = useState<Date>(new Date());
 
   // Approval KPI period filter
   const [approvalPeriodType, setApprovalPeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [approvalDay, setApprovalDay] = useState<Date>(new Date());
   const [approvalYear, setApprovalYear] = useState<number>(getCurrentThaiYear());
-  const [approvalWeek, setApprovalWeek] = useState<number>(getWeekOfYear());
-  const [approvalMonth, setApprovalMonth] = useState<number>(getCurrentMonth());
 
   // Receive KPI period filter
   const [receivePeriodType, setReceivePeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [receiveDay, setReceiveDay] = useState<Date>(new Date());
   const [receiveYear, setReceiveYear] = useState<number>(getCurrentThaiYear());
-  const [receiveWeek, setReceiveWeek] = useState<number>(getWeekOfYear());
-  const [receiveMonth, setReceiveMonth] = useState<number>(getCurrentMonth());
 
   // Build query params
   const queryParams = {
     year: selectedYear,
     quarter: filterType === 'quarter' ? selectedQuarter : undefined,
   };
-
-  const weeksInYear = getWeeksInYear(sessionYear);
 
   // Fetch Summary KPI (new endpoints with year/quarter)
   const { data: approvalSummary, isLoading: loadingApprovalSummary } = api.kpi.getMyApprovalKPISummary.useQuery(
@@ -165,56 +96,44 @@ export default function MyKPIPage() {
 
   // Pre-aggregated Approval KPI queries
   const gregorianApprovalYear = approvalYear - 543;
-  const approvalWeeksInYear = getWeeksInYear(approvalYear);
 
   const { data: approvalKPIDaily, isLoading: loadingApprovalDaily } = api.kpi.getMyApprovalKPIDaily.useQuery(
     { userId: user?.id || '', date: approvalDay },
     { enabled: !!user?.id && approvalPeriodType === 'daily' }
   );
   const { data: approvalKPIWeekly, isLoading: loadingApprovalWeekly } = api.kpi.getMyApprovalKPIWeekly.useQuery(
-    { userId: user?.id || '', year: gregorianApprovalYear, week: approvalWeek },
+    { userId: user?.id || '', year: gregorianApprovalYear },
     { enabled: !!user?.id && approvalPeriodType === 'weekly' }
   );
   const { data: approvalKPIMonthly, isLoading: loadingApprovalMonthly } = api.kpi.getMyApprovalKPIMonthly.useQuery(
-    { userId: user?.id || '', year: gregorianApprovalYear, month: approvalMonth },
+    { userId: user?.id || '', year: gregorianApprovalYear },
     { enabled: !!user?.id && approvalPeriodType === 'monthly' }
   );
   const { data: approvalKPIYearly, isLoading: loadingApprovalYearly } = api.kpi.getMyApprovalKPIYearly.useQuery(
-    { userId: user?.id || '', year: gregorianApprovalYear },
+    { userId: user?.id || '' },
     { enabled: !!user?.id && approvalPeriodType === 'yearly' }
   );
-
-  const approvalKPI = approvalPeriodType === 'daily' ? approvalKPIDaily :
-                       approvalPeriodType === 'weekly' ? approvalKPIWeekly :
-                       approvalPeriodType === 'monthly' ? approvalKPIMonthly :
-                       approvalKPIYearly;
   const loadingApproval = loadingApprovalDaily || loadingApprovalWeekly || loadingApprovalMonthly || loadingApprovalYearly;
 
   // Pre-aggregated Receive KPI queries
   const gregorianReceiveYear = receiveYear - 543;
-  const receiveWeeksInYear = getWeeksInYear(receiveYear);
 
   const { data: receiveKPIDaily, isLoading: loadingReceiveDaily } = api.kpi.getMyReceiveKPIDaily.useQuery(
     { userId: user?.id || '', date: receiveDay },
     { enabled: !!user?.id && receivePeriodType === 'daily' }
   );
   const { data: receiveKPIWeekly, isLoading: loadingReceiveWeekly } = api.kpi.getMyReceiveKPIWeekly.useQuery(
-    { userId: user?.id || '', year: gregorianReceiveYear, week: receiveWeek },
+    { userId: user?.id || '', year: gregorianReceiveYear },
     { enabled: !!user?.id && receivePeriodType === 'weekly' }
   );
   const { data: receiveKPIMonthly, isLoading: loadingReceiveMonthly } = api.kpi.getMyReceiveKPIMonthly.useQuery(
-    { userId: user?.id || '', year: gregorianReceiveYear, month: receiveMonth },
+    { userId: user?.id || '', year: gregorianReceiveYear },
     { enabled: !!user?.id && receivePeriodType === 'monthly' }
   );
   const { data: receiveKPIYearly, isLoading: loadingReceiveYearly } = api.kpi.getMyReceiveKPIYearly.useQuery(
-    { userId: user?.id || '', year: gregorianReceiveYear },
+    { userId: user?.id || '' },
     { enabled: !!user?.id && receivePeriodType === 'yearly' }
   );
-
-  const receiveKPI = receivePeriodType === 'daily' ? receiveKPIDaily :
-                     receivePeriodType === 'weekly' ? receiveKPIWeekly :
-                     receivePeriodType === 'monthly' ? receiveKPIMonthly :
-                     receiveKPIYearly;
   const loadingReceive = loadingReceiveDaily || loadingReceiveWeekly || loadingReceiveMonthly || loadingReceiveYearly;
 
   // Pre-aggregated usage stats queries (based on period type)
@@ -226,25 +145,19 @@ export default function MyKPIPage() {
   );
 
   const { data: usageStatsWeekly, isLoading: loadingUsageWeekly } = api.kpi.getMyUsageStatsWeekly.useQuery(
-    { userId: user?.id || '', year: gregorianSessionYear, week: sessionWeek },
+    { userId: user?.id || '', year: gregorianSessionYear },
     { enabled: !!user?.id && sessionPeriodType === 'weekly' }
   );
 
   const { data: usageStatsMonthly, isLoading: loadingUsageMonthly } = api.kpi.getMyUsageStatsMonthly.useQuery(
-    { userId: user?.id || '', year: gregorianSessionYear, month: sessionMonth },
+    { userId: user?.id || '', year: gregorianSessionYear },
     { enabled: !!user?.id && sessionPeriodType === 'monthly' }
   );
 
   const { data: usageStatsYearly, isLoading: loadingUsageYearly } = api.kpi.getMyUsageStatsYearly.useQuery(
-    { userId: user?.id || '', year: gregorianSessionYear },
+    { userId: user?.id || '' },
     { enabled: !!user?.id && sessionPeriodType === 'yearly' }
   );
-
-  // Get current usage stats based on period type
-  const usageStats = sessionPeriodType === 'daily' ? usageStatsDaily :
-                     sessionPeriodType === 'weekly' ? usageStatsWeekly :
-                     sessionPeriodType === 'monthly' ? usageStatsMonthly :
-                     usageStatsYearly;
 
   const loadingUsage = loadingUsageDaily || loadingUsageWeekly || loadingUsageMonthly || loadingUsageYearly;
 
@@ -432,8 +345,8 @@ export default function MyKPIPage() {
                     />
                   )}
 
-                  {/* Year Select (for weekly/monthly/yearly) */}
-                  {sessionPeriodType !== 'daily' && (
+                  {/* Year Select (for weekly/monthly only) */}
+                  {(sessionPeriodType === 'weekly' || sessionPeriodType === 'monthly') && (
                     <select
                       value={sessionYear}
                       onChange={(e) => setSessionYear(Number(e.target.value))}
@@ -444,118 +357,125 @@ export default function MyKPIPage() {
                       ))}
                     </select>
                   )}
-
-                  {/* Week Select (only for weekly) */}
-                  {sessionPeriodType === 'weekly' && (
-                    <select
-                      value={sessionWeek}
-                      onChange={(e) => setSessionWeek(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
-                    >
-                      {weeksInYear.map((w) => (
-                        <option key={w.week} value={w.week}>{w.label}</option>
-                      ))}
-                    </select>
-                  )}
-
-                  {/* Month Select (only for monthly) */}
-                  {sessionPeriodType === 'monthly' && (
-                    <select
-                      value={sessionMonth}
-                      onChange={(e) => setSessionMonth(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
-                    >
-                      {monthNames.map((m) => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                  )}
                 </div>
               </div>
 
-              {usageStats?.summary && usageStats.summary.totalSessions > 0 ? (
-                <>
-                  {/* Summary Cards */}
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-                    <div className="rounded-lg bg-indigo-50 p-4">
-                      <div className="text-sm text-indigo-600">จำนวนครั้งเข้าใช้</div>
-                      <div className="mt-1 text-2xl font-bold text-indigo-700">{usageStats.summary.totalSessions}</div>
-                      <div className="text-xs text-indigo-500 mt-1">ครั้ง</div>
-                    </div>
-
-                    <div className="rounded-lg bg-blue-50 p-4">
-                      <div className="text-sm text-blue-600">เวลาใช้งานรวม</div>
-                      <div className="mt-1 text-2xl font-bold text-blue-700">{usageStats.summary.totalHours}</div>
-                      <div className="text-xs text-blue-500 mt-1">ชั่วโมง ({usageStats.summary.totalMinutes} นาที)</div>
-                    </div>
-
-                    <div className="rounded-lg bg-purple-50 p-4">
-                      <div className="text-sm text-purple-600">เฉลี่ยต่อครั้ง</div>
-                      <div className="mt-1 text-2xl font-bold text-purple-700">{usageStats.summary.avgMinutesPerSession}</div>
-                      <div className="text-xs text-purple-500 mt-1">นาที/ครั้ง</div>
-                    </div>
-
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <div className="text-sm text-gray-600">วิธีออกจากระบบ</div>
-                      <div className="mt-1 flex items-baseline gap-2">
-                        <span className="text-lg font-bold text-green-600">{usageStats.summary.manualLogouts}</span>
-                        <span className="text-gray-400">/</span>
-                        <span className="text-lg font-bold text-yellow-600">{usageStats.summary.timeoutLogouts}</span>
+              {/* Daily View */}
+              {sessionPeriodType === 'daily' && (
+                usageStatsDaily?.summary && usageStatsDaily.summary.totalSessions > 0 ? (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+                      <div className="rounded-lg bg-indigo-50 p-4">
+                        <div className="text-sm text-indigo-600">จำนวนครั้งเข้าใช้</div>
+                        <div className="mt-1 text-2xl font-bold text-indigo-700">{usageStatsDaily.summary.totalSessions}</div>
+                        <div className="text-xs text-indigo-500 mt-1">ครั้ง</div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">กดออก / หมดเวลา</div>
+                      <div className="rounded-lg bg-blue-50 p-4">
+                        <div className="text-sm text-blue-600">เวลาใช้งานรวม</div>
+                        <div className="mt-1 text-2xl font-bold text-blue-700">{usageStatsDaily.summary.totalHours}</div>
+                        <div className="text-xs text-blue-500 mt-1">ชั่วโมง ({usageStatsDaily.summary.totalMinutes} นาที)</div>
+                      </div>
+                      <div className="rounded-lg bg-purple-50 p-4">
+                        <div className="text-sm text-purple-600">เฉลี่ยต่อครั้ง</div>
+                        <div className="mt-1 text-2xl font-bold text-purple-700">{usageStatsDaily.summary.avgMinutesPerSession}</div>
+                        <div className="text-xs text-purple-500 mt-1">นาที/ครั้ง</div>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 p-4">
+                        <div className="text-sm text-gray-600">วิธีออกจากระบบ</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-lg font-bold text-green-600">{usageStatsDaily.summary.manualLogouts}</span>
+                          <span className="text-gray-400">/</span>
+                          <span className="text-lg font-bold text-yellow-600">{usageStatsDaily.summary.timeoutLogouts}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">กดออก / หมดเวลา</div>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Recent Sessions (only for daily view) */}
-                  {sessionPeriodType === 'daily' && usageStatsDaily?.recentSessions && usageStatsDaily.recentSessions.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-3">ประวัติการเข้าใช้งานวันนี้</h3>
-                      <div className="max-h-64 overflow-y-auto">
-                        <div className="space-y-2">
-                          {usageStatsDaily.recentSessions.map((session, idx) => (
-                            <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-400">{idx + 1}.</span>
-                                <span className="text-gray-900">
-                                  {formatDate(session.sessionStart)}
-                                  <span className="text-gray-400 mx-1">→</span>
-                                  {session.sessionEnd ? formatDate(session.sessionEnd) : '-'}
-                                </span>
+                    {usageStatsDaily.recentSessions && usageStatsDaily.recentSessions.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">ประวัติการเข้าใช้งานวันนี้</h3>
+                        <div className="max-h-64 overflow-y-auto">
+                          <div className="space-y-2">
+                            {usageStatsDaily.recentSessions.map((session, idx) => (
+                              <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-400">{idx + 1}.</span>
+                                  <span className="text-gray-900">
+                                    {formatDate(session.sessionStart)}
+                                    <span className="text-gray-400 mx-1">&rarr;</span>
+                                    {session.sessionEnd ? formatDate(session.sessionEnd) : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <span className="text-gray-700">{session.durationMinutes} นาที</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                    session.logoutType === 'manual' ? 'bg-green-100 text-green-700' :
+                                    session.logoutType === 'timeout' ? 'bg-yellow-100 text-yellow-700' :
+                                    session.logoutType === 'inactivity' ? 'bg-orange-100 text-orange-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {session.logoutType === 'manual' ? 'กดออก' :
+                                     session.logoutType === 'timeout' ? 'หมดเวลา' :
+                                     session.logoutType === 'inactivity' ? 'ไม่มีกิจกรรม' :
+                                     session.logoutType === 'relogin' ? 'ล็อกอินใหม่' :
+                                     session.logoutType}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-4">
-                                <span className="text-gray-700">{session.durationMinutes} นาที</span>
-                                <span className={`rounded-full px-2 py-0.5 text-xs ${
-                                  session.logoutType === 'manual' ? 'bg-green-100 text-green-700' :
-                                  session.logoutType === 'timeout' ? 'bg-yellow-100 text-yellow-700' :
-                                  session.logoutType === 'inactivity' ? 'bg-orange-100 text-orange-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {session.logoutType === 'manual' ? 'กดออก' :
-                                   session.logoutType === 'timeout' ? 'หมดเวลา' :
-                                   session.logoutType === 'inactivity' ? 'ไม่มีกิจกรรม' :
-                                   session.logoutType === 'relogin' ? 'ล็อกอินใหม่' :
-                                   session.logoutType}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Info for non-daily views */}
-                  {sessionPeriodType !== 'daily' && (
-                    <div className="text-center text-sm text-gray-500 py-2">
-                      <span className="text-blue-600">💡</span> เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียด session
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="py-8 text-center text-gray-500">
-                  ยังไม่มีข้อมูลการเข้าใช้งานในช่วงเวลานี้
-                </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูลการเข้าใช้งานในวันนี้</div>
+                )
               )}
+
+              {/* Weekly/Monthly/Yearly Records Table */}
+              {sessionPeriodType !== 'daily' && (() => {
+                const records = sessionPeriodType === 'weekly' ? usageStatsWeekly?.records :
+                                sessionPeriodType === 'monthly' ? usageStatsMonthly?.records :
+                                usageStatsYearly?.records;
+                if (!records || records.length === 0) {
+                  return <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูลการเข้าใช้งานในช่วงเวลานี้</div>;
+                }
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ช่วงเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Session</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลารวม</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เฉลี่ย/ครั้ง</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">กดออก</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">หมดเวลา</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {records.map((r, idx) => {
+                          const periodLabel = 'week' in r
+                            ? `สัปดาห์ ${r.week} (${new Date(r.weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${new Date(r.weekEnd).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`
+                            : 'month' in r
+                            ? shortMonthNames[(r.month as number) - 1]
+                            : `ปี ${(r as { year: number }).year + 543}`;
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{periodLabel}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.totalSessions} ครั้ง</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.totalHours} ชม. ({r.totalMinutes} นาที)</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.avgMinutesPerSession} นาที</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{r.manualLogouts}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-yellow-600 font-medium">{r.timeoutLogouts}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ===== APPROVAL KPI SECTION ===== */}
@@ -594,35 +514,105 @@ export default function MyKPIPage() {
                       onChange={(e) => setApprovalDay(new Date(e.target.value))}
                       className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700" />
                   )}
-                  {approvalPeriodType !== 'daily' && (
+                  {(approvalPeriodType === 'weekly' || approvalPeriodType === 'monthly') && (
                     <select value={approvalYear} onChange={(e) => setApprovalYear(Number(e.target.value))}
                       className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
                       {yearOptions.map((y) => (<option key={y} value={y}>ปี {y}</option>))}
                     </select>
                   )}
-                  {approvalPeriodType === 'weekly' && (
-                    <select value={approvalWeek} onChange={(e) => setApprovalWeek(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
-                      {approvalWeeksInYear.map((w) => (<option key={w.week} value={w.week}>{w.label}</option>))}
-                    </select>
-                  )}
-                  {approvalPeriodType === 'monthly' && (
-                    <select value={approvalMonth} onChange={(e) => setApprovalMonth(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
-                      {monthNames.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
-                    </select>
-                  )}
                 </div>
               </div>
 
-              {approvalKPI && Object.keys(approvalKPI.stages).length > 0 ? (
-                <>
+              {/* Daily View */}
+              {approvalPeriodType === 'daily' && (
+                approvalKPIDaily && Object.keys(approvalKPIDaily.stages).length > 0 ? (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นตอน</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวนครั้ง</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">On-time Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 bg-white">
+                          {approvalKPIDaily.stageOrder.map((stage) => {
+                            const stats = approvalKPIDaily.stages[stage];
+                            if (!stats) return null;
+                            return (
+                              <tr key={stage} className="hover:bg-gray-50">
+                                <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                                  {approvalKPIDaily.stageNames[stage as keyof typeof approvalKPIDaily.stageNames]}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{stats.count}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(stats.avgMinutes)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{stats.onTimeCount}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{stats.lateCount}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center">
+                                  {stats.onTimeRate !== null ? (
+                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(stats.onTimeRate)}`}>
+                                      {stats.onTimeRate}%
+                                    </span>
+                                  ) : (<span className="text-gray-400">-</span>)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {approvalKPIDaily.details && approvalKPIDaily.details.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการอนุมัติวันนี้</h3>
+                        <div className="max-h-64 overflow-y-auto space-y-2">
+                          {approvalKPIDaily.details.map((d, idx) => (
+                            <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                              <div className="flex items-center gap-3">
+                                <span className="text-gray-400">{idx + 1}.</span>
+                                <span className="text-gray-900">PR #{d.prDocNum}</span>
+                                <span className="text-gray-500">({d.stageName})</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <span className="text-gray-700">{d.durationMinutes} นาที</span>
+                                {d.isOnTime !== null && (
+                                  <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                    d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การอนุมัติในวันนี้</div>
+                )
+              )}
+
+              {/* Weekly/Monthly/Yearly Records Table */}
+              {approvalPeriodType !== 'daily' && (() => {
+                const records = approvalPeriodType === 'weekly' ? approvalKPIWeekly?.records :
+                                approvalPeriodType === 'monthly' ? approvalKPIMonthly?.records :
+                                approvalKPIYearly?.records;
+                if (!records || records.length === 0) {
+                  return <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การอนุมัติในช่วงเวลานี้</div>;
+                }
+                return (
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นตอน</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวนครั้ง</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ช่วงเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ขั้นอนุมัติ</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวน</th>
                           <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
                           <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
                           <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
@@ -630,22 +620,24 @@ export default function MyKPIPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
-                        {approvalKPI.stageOrder.map((stage) => {
-                          const stats = approvalKPI.stages[stage];
-                          if (!stats) return null;
+                        {records.map((r, idx) => {
+                          const periodLabel = 'week' in r
+                            ? `สัปดาห์ ${r.week} (${new Date(r.weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${new Date(r.weekEnd).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`
+                            : 'month' in r
+                            ? shortMonthNames[(r.month as number) - 1]
+                            : `ปี ${(r as { year: number }).year + 543}`;
                           return (
-                            <tr key={stage} className="hover:bg-gray-50">
-                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
-                                {approvalKPI.stageNames[stage as keyof typeof approvalKPI.stageNames]}
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{stats.count}</td>
-                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(stats.avgMinutes)}</td>
-                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{stats.onTimeCount}</td>
-                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{stats.lateCount}</td>
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{periodLabel}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">ขั้น {r.approvalStage}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.totalCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(r.avgMinutes)}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{r.onTimeCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{r.lateCount}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center">
-                                {stats.onTimeRate !== null ? (
-                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(stats.onTimeRate)}`}>
-                                    {stats.onTimeRate}%
+                                {r.onTimeRate !== null ? (
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(r.onTimeRate)}`}>
+                                    {r.onTimeRate}%
                                   </span>
                                 ) : (<span className="text-gray-400">-</span>)}
                               </td>
@@ -655,46 +647,8 @@ export default function MyKPIPage() {
                       </tbody>
                     </table>
                   </div>
-
-                  {/* Detail records (daily only) */}
-                  {approvalPeriodType === 'daily' && approvalKPIDaily?.details && approvalKPIDaily.details.length > 0 && (
-                    <div className="mt-4">
-                      <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการอนุมัติวันนี้</h3>
-                      <div className="max-h-64 overflow-y-auto space-y-2">
-                        {approvalKPIDaily.details.map((d, idx) => (
-                          <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="text-gray-400">{idx + 1}.</span>
-                              <span className="text-gray-900">PR #{d.prDocNum}</span>
-                              <span className="text-gray-500">({d.stageName})</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className="text-gray-700">{d.durationMinutes} นาที</span>
-                              {d.isOnTime !== null && (
-                                <span className={`rounded-full px-2 py-0.5 text-xs ${
-                                  d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                }`}>
-                                  {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {approvalPeriodType !== 'daily' && (
-                    <div className="text-center text-sm text-gray-500 py-2 mt-2">
-                      เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียดการอนุมัติ
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="py-8 text-center text-gray-500">
-                  ยังไม่มีข้อมูล KPI การอนุมัติในช่วงเวลานี้
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* ===== RECEIVE CONFIRM KPI SECTION ===== */}
@@ -733,102 +687,140 @@ export default function MyKPIPage() {
                       onChange={(e) => setReceiveDay(new Date(e.target.value))}
                       className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700" />
                   )}
-                  {receivePeriodType !== 'daily' && (
+                  {(receivePeriodType === 'weekly' || receivePeriodType === 'monthly') && (
                     <select value={receiveYear} onChange={(e) => setReceiveYear(Number(e.target.value))}
                       className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
                       {yearOptions.map((y) => (<option key={y} value={y}>ปี {y}</option>))}
                     </select>
                   )}
-                  {receivePeriodType === 'weekly' && (
-                    <select value={receiveWeek} onChange={(e) => setReceiveWeek(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
-                      {receiveWeeksInYear.map((w) => (<option key={w.week} value={w.week}>{w.label}</option>))}
-                    </select>
-                  )}
-                  {receivePeriodType === 'monthly' && (
-                    <select value={receiveMonth} onChange={(e) => setReceiveMonth(Number(e.target.value))}
-                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700">
-                      {monthNames.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
-                    </select>
-                  )}
                 </div>
               </div>
 
-              {receiveKPI?.summary && receiveKPI.summary.totalCount > 0 ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    <div className="rounded-lg bg-gray-50 p-4">
-                      <div className="text-sm text-gray-500">จำนวนครั้งทั้งหมด</div>
-                      <div className="mt-1 text-2xl font-bold text-gray-900">{receiveKPI.summary.totalCount}</div>
-                    </div>
-                    <div className="rounded-lg bg-blue-50 p-4">
-                      <div className="text-sm text-blue-600">เวลาเฉลี่ย</div>
-                      <div className="mt-1 text-2xl font-bold text-blue-700">{formatDuration(receiveKPI.summary.avgMinutes)}</div>
-                    </div>
-                    <div className="rounded-lg bg-green-50 p-4">
-                      <div className="text-sm text-green-600">On-time Rate</div>
-                      <div className="mt-1 text-2xl font-bold text-green-700">
-                        {receiveKPI.summary.onTimeRate !== null ? `${receiveKPI.summary.onTimeRate}%` : '-'}
+              {/* Daily View */}
+              {receivePeriodType === 'daily' && (
+                receiveKPIDaily?.summary && receiveKPIDaily.summary.totalCount > 0 ? (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-lg bg-gray-50 p-4">
+                        <div className="text-sm text-gray-500">จำนวนครั้งทั้งหมด</div>
+                        <div className="mt-1 text-2xl font-bold text-gray-900">{receiveKPIDaily.summary.totalCount}</div>
                       </div>
-                      <div className="text-xs text-green-600 mt-1">
-                        {receiveKPI.summary.onTimeCount} ตรงเวลา / {receiveKPI.summary.lateCount} เกินเวลา
+                      <div className="rounded-lg bg-blue-50 p-4">
+                        <div className="text-sm text-blue-600">เวลาเฉลี่ย</div>
+                        <div className="mt-1 text-2xl font-bold text-blue-700">{formatDuration(receiveKPIDaily.summary.avgMinutes)}</div>
+                      </div>
+                      <div className="rounded-lg bg-green-50 p-4">
+                        <div className="text-sm text-green-600">On-time Rate</div>
+                        <div className="mt-1 text-2xl font-bold text-green-700">
+                          {receiveKPIDaily.summary.onTimeRate !== null ? `${receiveKPIDaily.summary.onTimeRate}%` : '-'}
+                        </div>
+                        <div className="text-xs text-green-600 mt-1">
+                          {receiveKPIDaily.summary.onTimeCount} ตรงเวลา / {receiveKPIDaily.summary.lateCount} เกินเวลา
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-purple-50 p-4">
+                        <div className="text-sm text-purple-600">สถานะการยืนยัน</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-xl font-bold text-green-600">{receiveKPIDaily.summary.confirmedCount}</span>
+                          <span className="text-gray-400">/</span>
+                          <span className="text-xl font-bold text-red-600">{receiveKPIDaily.summary.rejectedCount}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">ยืนยัน / ปฏิเสธ</div>
                       </div>
                     </div>
-                    <div className="rounded-lg bg-purple-50 p-4">
-                      <div className="text-sm text-purple-600">สถานะการยืนยัน</div>
-                      <div className="mt-1 flex items-baseline gap-2">
-                        <span className="text-xl font-bold text-green-600">{receiveKPI.summary.confirmedCount}</span>
-                        <span className="text-gray-400">/</span>
-                        <span className="text-xl font-bold text-red-600">{receiveKPI.summary.rejectedCount}</span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">ยืนยัน / ปฏิเสธ</div>
-                    </div>
-                  </div>
-
-                  {/* Detail records (daily only) */}
-                  {receivePeriodType === 'daily' && receiveKPIDaily?.details && receiveKPIDaily.details.length > 0 && (
-                    <div className="mt-4">
-                      <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการยืนยันรับของวันนี้</h3>
-                      <div className="max-h-64 overflow-y-auto space-y-2">
-                        {receiveKPIDaily.details.map((d, idx) => (
-                          <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="text-gray-400">{idx + 1}.</span>
-                              <span className="text-gray-900">PR #{d.prDocNum}</span>
-                              <span className="text-gray-500">({d.itemsCount} รายการ)</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className="text-gray-700">{d.durationMinutes} นาที</span>
-                              <span className={`rounded-full px-2 py-0.5 text-xs ${
-                                d.confirmStatus === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                {d.confirmStatus === 'confirmed' ? 'ยืนยัน' : 'ปฏิเสธ'}
-                              </span>
-                              {d.isOnTime !== null && (
+                    {receiveKPIDaily.details && receiveKPIDaily.details.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">รายละเอียดการยืนยันรับของวันนี้</h3>
+                        <div className="max-h-64 overflow-y-auto space-y-2">
+                          {receiveKPIDaily.details.map((d, idx) => (
+                            <div key={idx} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
+                              <div className="flex items-center gap-3">
+                                <span className="text-gray-400">{idx + 1}.</span>
+                                <span className="text-gray-900">PR #{d.prDocNum}</span>
+                                <span className="text-gray-500">({d.itemsCount} รายการ)</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <span className="text-gray-700">{d.durationMinutes} นาที</span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs ${
-                                  d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  d.confirmStatus === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                                 }`}>
-                                  {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
+                                  {d.confirmStatus === 'confirmed' ? 'ยืนยัน' : 'ปฏิเสธ'}
                                 </span>
-                              )}
+                                {d.isOnTime !== null && (
+                                  <span className={`rounded-full px-2 py-0.5 text-xs ${
+                                    d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {d.isOnTime ? 'ตรงเวลา' : 'เกินเวลา'}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {receivePeriodType !== 'daily' && (
-                    <div className="text-center text-sm text-gray-500 py-2 mt-2">
-                      เลือก &quot;รายวัน&quot; เพื่อดูรายละเอียดการยืนยันรับของ
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="py-8 text-center text-gray-500">
-                  ยังไม่มีข้อมูล KPI การยืนยันรับของในช่วงเวลานี้
-                </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การยืนยันรับของในวันนี้</div>
+                )
               )}
+
+              {/* Weekly/Monthly/Yearly Records Table */}
+              {receivePeriodType !== 'daily' && (() => {
+                const records = receivePeriodType === 'weekly' ? receiveKPIWeekly?.records :
+                                receivePeriodType === 'monthly' ? receiveKPIMonthly?.records :
+                                receiveKPIYearly?.records;
+                if (!records || records.length === 0) {
+                  return <div className="py-8 text-center text-gray-500">ยังไม่มีข้อมูล KPI การยืนยันรับของในช่วงเวลานี้</div>;
+                }
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ช่วงเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">จำนวน</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เวลาเฉลี่ย</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ตรงเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">เกินเวลา</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">On-time Rate</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">ยืนยัน/ปฏิเสธ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {records.map((r, idx) => {
+                          const periodLabel = 'week' in r
+                            ? `สัปดาห์ ${r.week} (${new Date(r.weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} - ${new Date(r.weekEnd).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`
+                            : 'month' in r
+                            ? shortMonthNames[(r.month as number) - 1]
+                            : `ปี ${(r as { year: number }).year + 543}`;
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{periodLabel}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.totalCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(r.avgMinutes)}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{r.onTimeCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{r.lateCount}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center">
+                                {r.onTimeRate !== null ? (
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getOnTimeRateColor(r.onTimeRate)}`}>
+                                    {r.onTimeRate}%
+                                  </span>
+                                ) : (<span className="text-gray-400">-</span>)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
+                                <span className="text-green-600">{r.confirmedCount}</span>
+                                <span className="text-gray-400 mx-1">/</span>
+                                <span className="text-red-600">{r.rejectedCount}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ===== INFO BOX ===== */}
