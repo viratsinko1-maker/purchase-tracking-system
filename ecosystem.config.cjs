@@ -4,7 +4,6 @@ module.exports = {
       name: 'pr-po-tracking',
       script: 'server.ts',
       node_args: '--import tsx',
-      cwd: '/d/VS/network/VS/PR_PO/test-github-clone',
       exec_mode: 'fork',
       instances: 1,
       autorestart: true,
