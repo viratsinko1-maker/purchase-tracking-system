@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'pr-po-tracking',
-      script: 'npm',
-      args: 'run start',
+      script: 'server.ts',
+      node_args: '--import tsx',
       cwd: '/d/VS/network/VS/PR_PO/test-github-clone',
       exec_mode: 'fork',
       instances: 1,
