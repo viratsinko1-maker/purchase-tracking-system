@@ -5,6 +5,7 @@ module.exports = {
       script: 'npm',
       args: 'run start',
       cwd: '/d/VS/network/VS/PR_PO/test-github-clone',
+      exec_mode: 'fork',
       instances: 1,
       autorestart: true,
       watch: false,
