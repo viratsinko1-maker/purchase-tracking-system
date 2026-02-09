@@ -38,6 +38,7 @@ function PRTrackingContent() {
   const [searchProject, setSearchProject] = useState(""); // ชื่อโครงการ
   const [searchPRNo, setSearchPRNo] = useState(""); // เลข PR (partial match)
   const [searchTracking, setSearchTracking] = useState(""); // การติดตาม
+  const [searchProjectCode, setSearchProjectCode] = useState(""); // เลขโครงการ
   const [exactPRNo, setExactPRNo] = useState(""); // เลข PR (exact match, ไม่สนใจวันที่)
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -247,11 +248,19 @@ function PRTrackingContent() {
       );
     }
 
-    // Filter by project name
+    // Filter by project name (ชื่องาน)
     if (searchProject) {
       const searchLower = searchProject.toLowerCase();
       filtered = filtered.filter(pr =>
         pr.job_name?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Filter by project code (เลขโครงการ)
+    if (searchProjectCode) {
+      const searchLower = searchProjectCode.toLowerCase();
+      filtered = filtered.filter(pr =>
+        pr.project_code?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -361,7 +370,7 @@ function PRTrackingContent() {
     }
 
     return filtered;
-  }, [data, poFilter, urgencyFilter, searchPRNo, searchRequester, searchDepartment, searchProject, searchTracking, trackingsMap, exactPRNo, answerStatus, sortBy, departmentFilter, ocrCodeFilter, woFilter]);
+  }, [data, poFilter, urgencyFilter, searchPRNo, searchRequester, searchDepartment, searchProject, searchProjectCode, searchTracking, trackingsMap, exactPRNo, answerStatus, sortBy, departmentFilter, ocrCodeFilter, woFilter]);
 
   // ฟังก์ชันค้นหา
   const handleSearch = () => {
@@ -418,6 +427,7 @@ function PRTrackingContent() {
     setSearchProject("");
     setSearchPRNo("");
     setSearchTracking("");
+    setSearchProjectCode("");
     setExactPRNo("");
     setDateFrom(defaultDates.from);
     setDateTo(defaultDates.to);
@@ -941,6 +951,21 @@ function PRTrackingContent() {
                   )}
                 </div>
 
+                {/* ค้นหาเลขโครงการ (compact) */}
+                <input
+                  type="text"
+                  placeholder="เลขโครงการ..."
+                  value={searchProjectCode}
+                  onChange={(e) => setSearchProjectCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className={`rounded-md border px-2 py-1 text-xs w-[110px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-gray-400 ${
+                    searchProjectCode
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 bg-white'
+                  }`}
+                  title="ค้นหาเลขโครงการ เช่น 68022 (ไม่ต้องพิมพ์ TMKO-)"
+                />
+
                 {/* Spacer เพื่อดันปุ่มไปขวา */}
                 <div className="flex-1"></div>
 
@@ -971,7 +996,6 @@ function PRTrackingContent() {
               <>
                 {/* แถวที่ 2: Filters หลัก + Exact PR Search */}
                 <div className="space-y-2">
-                  {/* แถว 2.1: สถานะ, สถานะ PO, ความเร่งด่วน */}
                   <div className="grid grid-cols-3 gap-2">
                     {/* สถานะ */}
                     <div>
@@ -1007,7 +1031,7 @@ function PRTrackingContent() {
                     {/* Exact PR Search - กรอบสีแดง */}
                     <div>
                       <label htmlFor="exactPR" className="block text-sm font-bold text-red-700 mb-1">
-                        🔍 ค้นหา PR โดยตรง
+                        ค้นหา PR โดยตรง
                       </label>
                       <input
                         type="text"
@@ -1070,15 +1094,15 @@ function PRTrackingContent() {
                       />
                     </div>
 
-                    {/* ค้นหาชื่อโครงการ */}
+                    {/* ค้นหางาน */}
                     <div>
                       <label htmlFor="searchProject" className="block text-sm font-bold text-orange-600 mb-1">
-                        ค้นหาชื่อโครงการ
+                        ค้นหางาน
                       </label>
                       <input
                         type="text"
                         id="searchProject"
-                        placeholder="ชื่อโครงการ..."
+                        placeholder="ชื่องาน..."
                         value={searchProject}
                         onChange={(e) => setSearchProject(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSearch()}
