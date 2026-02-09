@@ -2,6 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'pr-po-tracking',
+      interpreter: 'node',
       script: 'server.ts',
       node_args: '--import tsx',
       exec_mode: 'fork',
