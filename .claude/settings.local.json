@@ -123,7 +123,17 @@
       "Bash(kill:*)",
       "Bash(ls:*)",
       "Bash(npx prisma validate:*)",
-      "Bash(del \"d:\\\\VS\\\\network\\\\VS\\\\PR_PO\\\\test-github-clone\\\\temp-check-permissions.mjs\")"
+      "Bash(del \"d:\\\\VS\\\\network\\\\VS\\\\PR_PO\\\\test-github-clone\\\\temp-check-permissions.mjs\")",
+      "Bash(pm2 list:*)",
+      "Bash(pkill:*)",
+      "Bash(npm run start:*)",
+      "Bash(npm run sync:all:*)",
+      "Bash(xargs:*)",
+      "Bash(find:*)",
+      "Bash(npx next build:*)",
+      "Bash(npx next start:*)",
+      "Bash(del /f node_modules.prismaclientquery_engine-windows.dll.node)",
+      "Bash(git status:*)"
     ],
     "deny": [],
     "ask": []

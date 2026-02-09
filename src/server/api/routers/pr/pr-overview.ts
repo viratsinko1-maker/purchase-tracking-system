@@ -178,6 +178,7 @@ export const prOverviewRouter = createTRPCRouter({
       const poLines = await ctx.db.$queryRawUnsafe(`
         SELECT
           pol.base_ref as pr_doc_num,
+          pol.base_line as pr_line_num,
           pol.po_doc_num,
           pol.line_num as po_line_num,
           pol.item_code as po_item_code,
@@ -232,47 +233,28 @@ export const prOverviewRouter = createTRPCRouter({
       const matchedPOKeys = new Set<string>();
 
       const linesWithPO = prLines.map((line) => {
-        // Match PO กับ PR line โดยใช้ทั้ง item_code และ description ร่วมกัน
-        // เพื่อแก้ปัญหากรณีที่มี PR หลาย line ใช้ item_code เดียวกันแต่ต่าง description
+        // Priority 1: Exact match by base_line (เลขบรรทัด PR ต้นทางจาก SAP)
         let matchingPOs = poLines.filter((po: any) => {
           const key = `${po.po_doc_num}-${po.po_line_num}`;
-          // ถ้าถูก match ไปแล้ว ข้าม
           if (matchedPOKeys.has(key)) return false;
-
-          // Priority 1: Match โดยใช้ทั้ง item_code และ description (exact match)
-          if (line.item_code && po.po_item_code && line.description && po.po_description) {
-            // Normalize description สำหรับเปรียบเทียบ (trim และ lowercase)
-            const prDesc = line.description.trim().toLowerCase();
-            const poDesc = po.po_description.trim().toLowerCase();
-            if (line.item_code === po.po_item_code && prDesc === poDesc) {
-              return true;
-            }
-          }
-
-          return false;
+          return po.pr_line_num != null && po.pr_line_num === line.line_num;
         });
 
-        // ถ้าไม่พบ exact match, ลอง match ด้วย item_code อย่างเดียว (แต่จำกัดแค่ 1 PO)
+        // Priority 2: Fallback สำหรับ PO ที่ไม่มี base_line (data เก่า)
+        // ใช้ item_code + description exact match
         if (matchingPOs.length === 0) {
-          const fallbackPO = poLines.find((po: any) => {
+          matchingPOs = poLines.filter((po: any) => {
             const key = `${po.po_doc_num}-${po.po_line_num}`;
             if (matchedPOKeys.has(key)) return false;
-
-            if (line.item_code && po.po_item_code) {
-              return line.item_code === po.po_item_code;
-            }
-            // Fallback: ถ้าไม่มี item_code ให้ match ด้วย description
-            if (line.description && po.po_description) {
+            // ถ้ามี base_line แล้วแต่ไม่ตรง → ข้าม (ไม่ fallback)
+            if (po.pr_line_num != null) return false;
+            if (line.item_code && po.po_item_code && line.description && po.po_description) {
               const prDesc = line.description.trim().toLowerCase();
               const poDesc = po.po_description.trim().toLowerCase();
-              return prDesc === poDesc;
+              return line.item_code === po.po_item_code && prDesc === poDesc;
             }
             return false;
           });
-
-          if (fallbackPO) {
-            matchingPOs = [fallbackPO];
-          }
         }
 
         // บันทึก PO ที่ถูก match แล้ว

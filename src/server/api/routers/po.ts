@@ -264,7 +264,7 @@ export const poRouter = createTRPCRouter({
         SELECT
           T0.[DocNum], T0.[DocDate], T0.[DocDueDate], T1.[ItemCode], T1.[Dscription],
           T1.[Quantity], T0.[DocStatus], T0.[UpdateDate], T0.[CreateDate],
-          T0.[ReqDate], T0.[CancelDate], T0.[CANCELED], T1.[LineStatus], T1.[BaseRef], T1.[LineNum]
+          T0.[ReqDate], T0.[CancelDate], T0.[CANCELED], T1.[LineStatus], T1.[BaseRef], T1.[BaseLine], T1.[LineNum]
         FROM
           OPOR T0
           INNER JOIN POR1 T1 ON T0.[DocEntry] = T1.[DocEntry]
@@ -305,6 +305,7 @@ export const poRouter = createTRPCRouter({
           quantity: row.Quantity,
           line_status: row.LineStatus,
           base_ref: row.BaseRef ? parseInt(row.BaseRef) : null,
+          base_line: row.BaseLine != null ? parseInt(row.BaseLine) : null,
         });
       });
 
@@ -347,13 +348,14 @@ export const poRouter = createTRPCRouter({
           await ctx.db.$executeRawUnsafe(`
             INSERT INTO po_lines (
               po_doc_num, line_num, item_code, description, quantity,
-              line_status, base_ref, last_sync_date
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+              line_status, base_ref, base_line, last_sync_date
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
             ON CONFLICT (po_doc_num, line_num, description) DO UPDATE SET
               item_code = EXCLUDED.item_code,
               quantity = EXCLUDED.quantity,
               line_status = EXCLUDED.line_status,
               base_ref = EXCLUDED.base_ref,
+              base_line = EXCLUDED.base_line,
               last_sync_date = NOW()
           `,
             docNum,
@@ -362,7 +364,8 @@ export const poRouter = createTRPCRouter({
             line.description,
             line.quantity,
             line.line_status,
-            line.base_ref
+            line.base_ref,
+            line.base_line
           );
           lineCount++;
         }
