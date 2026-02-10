@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
+import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
 
 export const prOverviewRouter = createTRPCRouter({
   // 🔹 ดึงสรุป PR ทั้งหมดจาก Materialized View
@@ -667,6 +668,35 @@ export const prOverviewRouter = createTRPCRouter({
         giRecords,
         totalRecords: records.length,
       };
+    }),
+
+  // 🔹 บันทึก Audit Log ตอนกดปุ่มปริ้น PR
+  logPrint: createTableProcedure('pr_print', 'execute')
+    .input(z.object({ prNo: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      // ดึงชื่อ user จาก DB (เช็คทั้ง User local และ user_production)
+      const localUser = await ctx.db.user.findUnique({
+        where: { id: ctx.user.id },
+        select: { name: true, username: true },
+      });
+      const prodUser = localUser ? null : await ctx.db.user_production.findUnique({
+        where: { id: ctx.user.id },
+        select: { name: true, username: true },
+      });
+      const found = localUser ?? prodUser;
+      const userName = found?.name ?? found?.username ?? ctx.user.id;
+
+      await createAuditLog(ctx.db, {
+        userId: ctx.user.id,
+        userName,
+        action: AuditAction.PR_PRINT,
+        tableName: 'pr_master',
+        recordId: String(input.prNo),
+        prNo: input.prNo,
+        description: `${userName} เปิดหน้าพิมพ์ PR #${input.prNo}`,
+        ipAddress: getIpFromContext(ctx),
+      });
+      return { success: true };
     }),
 
   // 🔹 ค้นหา PR จากชื่องาน สำหรับหน้า Receive Good (limit 5)

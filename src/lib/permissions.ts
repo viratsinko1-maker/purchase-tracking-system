@@ -66,7 +66,7 @@ export const PROTECTED_TABLES: Record<string, TableMetadata> = {
   'pr_tracking.read': {
     friendlyName: 'ดูหน้าติดตาม PR',
     category: 'pr_tracking',
-    description: 'เข้าถึงหน้า PR Tracking',
+    description: 'เข้าถึงหน้า PR Tracking และ PR Overview',
     displayOrder: 1,
   },
   'pr_tracking.search': {

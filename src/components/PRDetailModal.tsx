@@ -47,6 +47,9 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
     setShowNoPermissionModal(true);
   };
 
+  // Mutation สำหรับ log ตอนกดปริ้น
+  const logPrintMutation = api.pr.logPrint.useMutation();
+
   // State สำหรับเปิด PO Detail Modal
   const [selectedPoNo, setSelectedPoNo] = useState<number | null>(null);
 
@@ -354,7 +357,10 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                 {/* Print Button - Opens new page */}
                 <CanAccess action="pr_print.execute" showDisabled disabledTooltip="คุณไม่มีสิทธิ์พิมพ์ PR">
                   <button
-                    onClick={() => window.open(`/print/pr/${prNo}`, '_blank')}
+                    onClick={() => {
+                      logPrintMutation.mutate({ prNo });
+                      window.open(`/print/pr/${prNo}`, '_blank');
+                    }}
                     className="rounded-full p-2 hover:bg-white/20 transition"
                     title="พิมพ์"
                   >
