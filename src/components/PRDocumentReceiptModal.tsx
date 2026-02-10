@@ -153,7 +153,7 @@ export default function PRDocumentReceiptModal({
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div
-          className="w-full max-w-4xl rounded-lg bg-white shadow-xl pointer-events-auto"
+          className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-white shadow-xl pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -175,7 +175,7 @@ export default function PRDocumentReceiptModal({
           </div>
 
           {/* Body */}
-          <div className="px-6 py-4">
+          <div className="px-6 py-4 overflow-y-auto">
             {(isLoading || isLoadingPreview) ? (
               <div className="flex justify-center py-8">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
