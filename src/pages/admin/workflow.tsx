@@ -217,7 +217,7 @@ function WorkflowContent() {
   const fetchAssignments = async (ocrCodeId: number) => {
     setLoadingAssignments((prev) => new Set(prev).add(ocrCodeId));
     try {
-      const response = await fetch(`/api/admin/ocr-user-assignments?ocrCodeId=${ocrCodeId}`);
+      const response = await authFetch(`/api/admin/ocr-user-assignments?ocrCodeId=${ocrCodeId}`);
       const data = await response.json();
       if (data.success) {
         setAssignments((prev) => {
