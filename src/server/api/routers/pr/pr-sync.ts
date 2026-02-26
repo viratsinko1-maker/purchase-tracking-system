@@ -25,13 +25,20 @@ async function autoApproveRequesterForNewPRs(
 
   if (newPrNums.length === 0) return { created: 0, skipped: prDocNums.length };
 
-  // 2. ดึง pr_master เพื่อเอา req_name + create_date
+  // 2. ดึง pr_master เพื่อเอา req_name + create_date (เฉพาะ PR ตั้งแต่ 26 ก.พ. 2569)
+  const AUTO_APPROVE_START_DATE = new Date('2026-02-26');
   const prMasters = await db.pr_master.findMany({
-    where: { doc_num: { in: newPrNums } },
+    where: {
+      doc_num: { in: newPrNums },
+      create_date: { gte: AUTO_APPROVE_START_DATE },
+    },
     select: { doc_num: true, req_name: true, create_date: true, doc_date: true },
   });
 
+  if (prMasters.length === 0) return { created: 0, skipped: prDocNums.length };
+
   // 3. ดึง primary ocr_code2 สำหรับแต่ละ PR
+  const eligiblePrNums = prMasters.map(pr => pr.doc_num);
   const ocrResults = await db.$queryRawUnsafe<{ pr_doc_num: number; ocr_code2: string }[]>(`
     SELECT DISTINCT ON (pr_doc_num) pr_doc_num, ocr_code2
     FROM (
@@ -41,7 +48,7 @@ async function autoApproveRequesterForNewPRs(
       GROUP BY pr_doc_num, ocr_code2
       ORDER BY pr_doc_num, cnt DESC, first_line ASC
     ) sub
-  `, newPrNums);
+  `, eligiblePrNums);
 
   const ocrMap = new Map(ocrResults.map(r => [r.pr_doc_num, r.ocr_code2]));
 
