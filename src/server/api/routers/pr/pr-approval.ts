@@ -215,37 +215,38 @@ export const prApprovalRouter = createTRPCRouter({
       }
 
       const now = new Date();
-      const thaiDateTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const bangkokDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const dateOnly = new Date(Date.UTC(bangkokDate.getFullYear(), bangkokDate.getMonth(), bangkokDate.getDate()));
 
       const updateDataMap: Record<string, Record<string, unknown>> = {
         requester: {
           requester_approval_by: input.approverName,
           requester_approval_by_user_id: input.approverUserId || null,
-          requester_approval_at: thaiDateTime,
+          requester_approval_at: dateOnly,
           updated_at: now,
         },
         line: {
           line_approval_by: input.approverName,
           line_approval_by_user_id: input.approverUserId || null,
-          line_approval_at: thaiDateTime,
+          line_approval_at: dateOnly,
           updated_at: now,
         },
         cost_center: {
           cost_center_approval_by: input.approverName,
           cost_center_approval_by_user_id: input.approverUserId || null,
-          cost_center_approval_at: thaiDateTime,
+          cost_center_approval_at: dateOnly,
           updated_at: now,
         },
         procurement: {
           procurement_approval_by: input.approverName,
           procurement_approval_by_user_id: input.approverUserId || null,
-          procurement_approval_at: thaiDateTime,
+          procurement_approval_at: dateOnly,
           updated_at: now,
         },
         vpc: {
           vpc_approval_by: input.approverName,
           vpc_approval_by_user_id: input.approverUserId || null,
-          vpc_approval_at: thaiDateTime,
+          vpc_approval_at: dateOnly,
           updated_at: now,
         },
       };
@@ -269,20 +270,22 @@ export const prApprovalRouter = createTRPCRouter({
         const previousStageField = previousStageMap[input.approvalType];
         const previousStageAt = previousStageField ? receipt[previousStageField] as Date | null : null;
 
-        // Calculate duration (seconds from previous stage or from receipt_datetime for requester)
-        let durationSeconds = 0;
+        // Calculate duration in days from previous stage or from receipt_date for requester
+        let durationDays = 0;
         let effectivePreviousAt: Date | null = null;
 
         if (input.approvalType === 'requester') {
-          // For requester: duration from receipt_datetime
-          effectivePreviousAt = receipt.receipt_datetime;
+          // For requester: duration from receipt_date
+          effectivePreviousAt = receipt.receipt_date ? new Date(receipt.receipt_date) : null;
         } else {
           effectivePreviousAt = previousStageAt;
         }
 
         if (effectivePreviousAt) {
-          durationSeconds = Math.floor((thaiDateTime.getTime() - new Date(effectivePreviousAt).getTime()) / 1000);
-          if (durationSeconds < 0) durationSeconds = 0;
+          const prevDate = new Date(effectivePreviousAt);
+          const prevDateOnly = new Date(prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate());
+          durationDays = Math.floor((dateOnly.getTime() - prevDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+          if (durationDays < 0) durationDays = 0;
         }
 
         // Get SLA config for this stage
@@ -298,9 +301,9 @@ export const prApprovalRouter = createTRPCRouter({
           orderBy: { stage: 'desc' }, // Specific stage takes priority over null
         });
 
-        const slaTargetMinutes = slaConfig?.target_minutes ?? null;
-        const isOnTime = slaTargetMinutes !== null
-          ? (durationSeconds / 60) <= slaTargetMinutes
+        const slaTargetDays = slaConfig?.target_days ?? null;
+        const isOnTime = slaTargetDays !== null
+          ? durationDays <= slaTargetDays
           : null;
 
         // Insert KPI metric
@@ -311,10 +314,9 @@ export const prApprovalRouter = createTRPCRouter({
             user_id: input.approverUserId || 'unknown',
             user_name: input.approverName,
             previous_stage_at: effectivePreviousAt,
-            approved_at: thaiDateTime,
-            duration_seconds: durationSeconds,
-            duration_minutes: durationSeconds / 60,
-            sla_target_minutes: slaTargetMinutes,
+            approved_at: dateOnly,
+            duration_days: durationDays,
+            sla_target_days: slaTargetDays,
             is_on_time: isOnTime,
             ocr_code2: receipt.ocr_code2,
           },
@@ -325,8 +327,8 @@ export const prApprovalRouter = createTRPCRouter({
           userId: input.approverUserId || 'unknown',
           userName: input.approverName,
           approvalStage: input.approvalType,
-          approvedAt: thaiDateTime,
-          durationMinutes: durationSeconds / 60,
+          approvedAt: dateOnly,
+          durationDays: durationDays,
           isOnTime: isOnTime,
         }).catch(console.error);
       } catch (kpiError) {
@@ -345,7 +347,7 @@ export const prApprovalRouter = createTRPCRouter({
         newValues: {
           approvalType: input.approvalType,
           approvedBy: input.approverName,
-          approvedAt: thaiDateTime,
+          approvedAt: dateOnly,
         },
         description: `อนุมัติ PR #${input.prNo} (${approvalNames[input.approvalType]})`,
         metadata: {
@@ -357,7 +359,7 @@ export const prApprovalRouter = createTRPCRouter({
       return {
         success: true,
         approvalType: input.approvalType,
-        approvalAt: thaiDateTime,
+        approvalAt: dateOnly,
         approvedBy: input.approverName,
         data: updated,
       };
@@ -699,6 +701,8 @@ export const prApprovalRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const now = new Date();
+      const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const approvalDate = new Date(Date.UTC(bangkokNow.getFullYear(), bangkokNow.getMonth(), bangkokNow.getDate()));
 
       if (!input.receiptDate) {
         throw new Error('ต้องบันทึกวันที่รับเอกสารก่อนถึงจะอนุมัติได้');
@@ -718,7 +722,7 @@ export const prApprovalRouter = createTRPCRouter({
             reason: input.reason || null,
             approved_by: input.approvedBy,
             approved_by_user_id: input.approvedByUserId || null,
-            approved_at: now,
+            approved_at: approvalDate,
             updated_at: now,
           },
         });
@@ -730,7 +734,7 @@ export const prApprovalRouter = createTRPCRouter({
             reason: input.reason || null,
             approved_by: input.approvedBy,
             approved_by_user_id: input.approvedByUserId || null,
-            approved_at: now,
+            approved_at: approvalDate,
             created_at: now,
             updated_at: now,
           },

@@ -19,6 +19,12 @@ const formatDuration = (minutes: number | null): string => {
   return `${days} วัน ${remainingHours} ชม.`;
 };
 
+// Helper function to format days (for approval KPI)
+const formatDurationDays = (days: number | null): string => {
+  if (days === null) return "-";
+  return `${days} วัน`;
+};
+
 // Helper function to format date
 const formatDate = (date: Date | string | null): string => {
   if (!date) return '-';
@@ -549,7 +555,7 @@ export default function MyKPIPage() {
                                   {approvalKPIDaily.stageNames[stage as keyof typeof approvalKPIDaily.stageNames]}
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{stats.count}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(stats.avgMinutes)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDurationDays(stats.avgDays)}</td>
                                 <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{stats.onTimeCount}</td>
                                 <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{stats.lateCount}</td>
                                 <td className="whitespace-nowrap px-4 py-3 text-center">
@@ -577,7 +583,7 @@ export default function MyKPIPage() {
                                 <span className="text-gray-500">({d.stageName})</span>
                               </div>
                               <div className="flex items-center gap-4">
-                                <span className="text-gray-700">{d.durationMinutes} นาที</span>
+                                <span className="text-gray-700">{d.durationDays} วัน</span>
                                 {d.isOnTime !== null && (
                                   <span className={`rounded-full px-2 py-0.5 text-xs ${
                                     d.isOnTime ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -631,7 +637,7 @@ export default function MyKPIPage() {
                               <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{periodLabel}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">ขั้น {r.approvalStage}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{r.totalCount}</td>
-                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDuration(r.avgMinutes)}</td>
+                              <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">{formatDurationDays(r.avgDays)}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">{r.onTimeCount}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-red-600 font-medium">{r.lateCount}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-center">

@@ -24,6 +24,8 @@ function SyncHistoryContent() {
   const [expandedSessions, setExpandedSessions] = useState<Set<number>>(new Set());
   const [showFullSyncConfirm, setShowFullSyncConfirm] = useState(false);
   const [showPRRefreshConfirm, setShowPRRefreshConfirm] = useState(false);
+  const [showBackfillSection, setShowBackfillSection] = useState(false);
+  const [selectedBackfillPRs, setSelectedBackfillPRs] = useState<Set<number>>(new Set());
 
   const { data, isLoading, error, refetch } = api.pr.getSyncHistory.useQuery({
     dateFrom,
@@ -53,6 +55,48 @@ function SyncHistoryContent() {
       setShowPRRefreshConfirm(false);
     },
   });
+
+  const { data: unreceiptedPRs, refetch: refetchUnreceipted } = api.pr.getUnreceiptedPRs.useQuery(
+    undefined,
+    { enabled: showBackfillSection }
+  );
+
+  const backfillMutation = api.pr.backfillRequesterApproval.useMutation({
+    onSuccess: (result) => {
+      alert(`Backfill สำเร็จ! สร้าง ${result.created} รายการ, ข้าม ${result.skipped} รายการ`);
+      setSelectedBackfillPRs(new Set());
+      void refetchUnreceipted();
+    },
+    onError: (error) => {
+      alert(`Backfill ล้มเหลว: ${error.message}`);
+    },
+  });
+
+  const handleBackfill = () => {
+    if (selectedBackfillPRs.size === 0) {
+      alert('กรุณาเลือก PR ที่ต้องการ backfill');
+      return;
+    }
+    backfillMutation.mutate({ prDocNums: Array.from(selectedBackfillPRs) });
+  };
+
+  const toggleBackfillPR = (prNo: number) => {
+    setSelectedBackfillPRs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(prNo)) newSet.delete(prNo);
+      else newSet.add(prNo);
+      return newSet;
+    });
+  };
+
+  const toggleSelectAllBackfill = () => {
+    if (!unreceiptedPRs) return;
+    if (selectedBackfillPRs.size === unreceiptedPRs.length) {
+      setSelectedBackfillPRs(new Set());
+    } else {
+      setSelectedBackfillPRs(new Set(unreceiptedPRs.map(pr => pr.doc_num)));
+    }
+  };
 
   const handleFullSync = () => {
     setShowFullSyncConfirm(true);
@@ -276,6 +320,108 @@ function SyncHistoryContent() {
             </div>
           </div>
         )}
+
+        {/* Backfill Section */}
+        <div className="mb-6 rounded-lg bg-white p-4 shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Backfill ขั้น 1 (ผู้ขอซื้อ)</h2>
+              <p className="text-xs text-gray-500">สำหรับ PR เก่าที่ยังไม่มีการรับเอกสาร — auto-approve ขั้น 1 ย้อนหลัง</p>
+            </div>
+            <button
+              onClick={() => setShowBackfillSection(!showBackfillSection)}
+              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"
+            >
+              {showBackfillSection ? 'ซ่อน' : 'แสดง PR ที่ยังไม่มี receipt'}
+            </button>
+          </div>
+
+          {showBackfillSection && (
+            <div className="mt-4">
+              {!unreceiptedPRs ? (
+                <p className="text-sm text-gray-500">กำลังโหลด...</p>
+              ) : unreceiptedPRs.length === 0 ? (
+                <p className="text-sm text-green-600">ไม่มี PR ที่ต้อง backfill — ทุก PR มี receipt แล้ว</p>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-sm text-gray-600">
+                      พบ <span className="font-medium">{unreceiptedPRs.length}</span> PR ที่ยังไม่มี receipt
+                      {selectedBackfillPRs.size > 0 && (
+                        <span className="ml-2 text-orange-600">(เลือก {selectedBackfillPRs.size} รายการ)</span>
+                      )}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={toggleSelectAllBackfill}
+                        className="rounded bg-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300"
+                      >
+                        {selectedBackfillPRs.size === unreceiptedPRs.length ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                      </button>
+                      <button
+                        onClick={handleBackfill}
+                        disabled={backfillMutation.isPending || selectedBackfillPRs.size === 0}
+                        className="rounded bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        {backfillMutation.isPending ? 'กำลัง backfill...' : `Backfill (${selectedBackfillPRs.size})`}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto rounded border">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left w-10">
+                            <input
+                              type="checkbox"
+                              checked={selectedBackfillPRs.size === unreceiptedPRs.length && unreceiptedPRs.length > 0}
+                              onChange={toggleSelectAllBackfill}
+                              className="rounded"
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-left">เลข PR</th>
+                          <th className="px-3 py-2 text-left">ผู้เปิด PR</th>
+                          <th className="px-3 py-2 text-left">วันที่เปิด</th>
+                          <th className="px-3 py-2 text-left">โครงการ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {unreceiptedPRs.map(pr => (
+                          <tr
+                            key={pr.doc_num}
+                            className={`hover:bg-gray-50 cursor-pointer ${selectedBackfillPRs.has(pr.doc_num) ? 'bg-orange-50' : ''}`}
+                            onClick={() => toggleBackfillPR(pr.doc_num)}
+                          >
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedBackfillPRs.has(pr.doc_num)}
+                                onChange={() => toggleBackfillPR(pr.doc_num)}
+                                className="rounded"
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-medium">{pr.doc_num}</td>
+                            <td className="px-3 py-2">{pr.req_name || '-'}</td>
+                            <td className="px-3 py-2">
+                              {pr.create_date
+                                ? new Date(pr.create_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : pr.doc_date
+                                  ? new Date(pr.doc_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+                                  : '-'
+                              }
+                            </td>
+                            <td className="px-3 py-2 text-gray-500">{pr.job_name || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Date Filter */}
         <div className="mb-6 rounded-lg bg-white p-4 shadow">

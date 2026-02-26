@@ -12,7 +12,7 @@ export interface ApprovalMetricData {
   userName: string;
   approvalStage: string;
   approvedAt: Date;
-  durationMinutes: number;
+  durationDays: number;
   isOnTime: boolean | null;
 }
 
@@ -75,15 +75,15 @@ async function upsertDaily(data: ApprovalMetricData, dateKey: Date): Promise<voi
 
   if (existing) {
     const newCount = existing.total_count + 1;
-    const newTotalMin = Number(existing.total_duration_min) + data.durationMinutes;
-    const newAvg = newTotalMin / newCount;
+    const newTotalDays = Number(existing.total_duration_days) + data.durationDays;
+    const newAvg = newTotalDays / newCount;
 
     await db.kpi_approval_daily.update({
       where: { id: existing.id },
       data: {
         total_count: newCount,
-        total_duration_min: newTotalMin,
-        avg_duration_min: newAvg,
+        total_duration_days: newTotalDays,
+        avg_duration_days: newAvg,
         on_time_count: data.isOnTime === true ? { increment: 1 } : undefined,
         late_count: data.isOnTime === false ? { increment: 1 } : undefined,
       },
@@ -96,8 +96,8 @@ async function upsertDaily(data: ApprovalMetricData, dateKey: Date): Promise<voi
         date: dateKey,
         approval_stage: data.approvalStage,
         total_count: 1,
-        total_duration_min: data.durationMinutes,
-        avg_duration_min: data.durationMinutes,
+        total_duration_days: data.durationDays,
+        avg_duration_days: data.durationDays,
         on_time_count: data.isOnTime === true ? 1 : 0,
         late_count: data.isOnTime === false ? 1 : 0,
       },
@@ -124,15 +124,15 @@ async function upsertWeekly(
 
   if (existing) {
     const newCount = existing.total_count + 1;
-    const newTotalMin = Number(existing.total_duration_min) + data.durationMinutes;
-    const newAvg = newTotalMin / newCount;
+    const newTotalDays = Number(existing.total_duration_days) + data.durationDays;
+    const newAvg = newTotalDays / newCount;
 
     await db.kpi_approval_weekly.update({
       where: { id: existing.id },
       data: {
         total_count: newCount,
-        total_duration_min: newTotalMin,
-        avg_duration_min: newAvg,
+        total_duration_days: newTotalDays,
+        avg_duration_days: newAvg,
         on_time_count: data.isOnTime === true ? { increment: 1 } : undefined,
         late_count: data.isOnTime === false ? { increment: 1 } : undefined,
       },
@@ -148,8 +148,8 @@ async function upsertWeekly(
         week_end: weekBounds.end,
         approval_stage: data.approvalStage,
         total_count: 1,
-        total_duration_min: data.durationMinutes,
-        avg_duration_min: data.durationMinutes,
+        total_duration_days: data.durationDays,
+        avg_duration_days: data.durationDays,
         on_time_count: data.isOnTime === true ? 1 : 0,
         late_count: data.isOnTime === false ? 1 : 0,
       },
@@ -171,15 +171,15 @@ async function upsertMonthly(data: ApprovalMetricData, year: number, month: numb
 
   if (existing) {
     const newCount = existing.total_count + 1;
-    const newTotalMin = Number(existing.total_duration_min) + data.durationMinutes;
-    const newAvg = newTotalMin / newCount;
+    const newTotalDays = Number(existing.total_duration_days) + data.durationDays;
+    const newAvg = newTotalDays / newCount;
 
     await db.kpi_approval_monthly.update({
       where: { id: existing.id },
       data: {
         total_count: newCount,
-        total_duration_min: newTotalMin,
-        avg_duration_min: newAvg,
+        total_duration_days: newTotalDays,
+        avg_duration_days: newAvg,
         on_time_count: data.isOnTime === true ? { increment: 1 } : undefined,
         late_count: data.isOnTime === false ? { increment: 1 } : undefined,
       },
@@ -193,8 +193,8 @@ async function upsertMonthly(data: ApprovalMetricData, year: number, month: numb
         month,
         approval_stage: data.approvalStage,
         total_count: 1,
-        total_duration_min: data.durationMinutes,
-        avg_duration_min: data.durationMinutes,
+        total_duration_days: data.durationDays,
+        avg_duration_days: data.durationDays,
         on_time_count: data.isOnTime === true ? 1 : 0,
         late_count: data.isOnTime === false ? 1 : 0,
       },
@@ -215,15 +215,15 @@ async function upsertYearly(data: ApprovalMetricData, year: number): Promise<voi
 
   if (existing) {
     const newCount = existing.total_count + 1;
-    const newTotalMin = Number(existing.total_duration_min) + data.durationMinutes;
-    const newAvg = newTotalMin / newCount;
+    const newTotalDays = Number(existing.total_duration_days) + data.durationDays;
+    const newAvg = newTotalDays / newCount;
 
     await db.kpi_approval_yearly.update({
       where: { id: existing.id },
       data: {
         total_count: newCount,
-        total_duration_min: newTotalMin,
-        avg_duration_min: newAvg,
+        total_duration_days: newTotalDays,
+        avg_duration_days: newAvg,
         on_time_count: data.isOnTime === true ? { increment: 1 } : undefined,
         late_count: data.isOnTime === false ? { increment: 1 } : undefined,
       },
@@ -236,8 +236,8 @@ async function upsertYearly(data: ApprovalMetricData, year: number): Promise<voi
         year,
         approval_stage: data.approvalStage,
         total_count: 1,
-        total_duration_min: data.durationMinutes,
-        avg_duration_min: data.durationMinutes,
+        total_duration_days: data.durationDays,
+        avg_duration_days: data.durationDays,
         on_time_count: data.isOnTime === true ? 1 : 0,
         late_count: data.isOnTime === false ? 1 : 0,
       },

@@ -3,7 +3,6 @@
  * Opens in new tab for clean printing
  */
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
 import Head from "next/head";
 import { api } from "~/utils/api";
 import PRPrintView from "~/components/PRPrintView";
@@ -11,8 +10,6 @@ import PRPrintView from "~/components/PRPrintView";
 export default function PRPrintPage() {
   const router = useRouter();
   const { prNo } = router.query;
-  const [isReady, setIsReady] = useState(false);
-
   const prNoNum = prNo ? parseInt(prNo as string, 10) : 0;
 
   // Fetch PR data
@@ -28,24 +25,6 @@ export default function PRPrintPage() {
   );
 
   const isLoading = prLoading || receiptLoading;
-
-  // Auto print when ready
-  useEffect(() => {
-    if (!isLoading && prData && isReady) {
-      // Small delay to ensure rendering is complete
-      const timer = setTimeout(() => {
-        window.print();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, prData, isReady]);
-
-  // Set ready after initial render
-  useEffect(() => {
-    if (!isLoading && prData) {
-      setIsReady(true);
-    }
-  }, [isLoading, prData]);
 
   if (isLoading) {
     return (
@@ -78,6 +57,7 @@ export default function PRPrintPage() {
     doc_num: prData.doc_num,
     date: prData.date,
     due_date: prData.due_date,
+    req_date: prData.req_date,
     create_date: prData.create_date,
     req_name: prData.req_name,
     department: prData.department,

@@ -19,6 +19,7 @@ interface PRData {
   doc_num: number;
   date: Date | string | null;
   due_date: Date | string | null;
+  req_date: Date | string | null;
   create_date: Date | string | null;
   req_name: string | null;
   department: string | null;

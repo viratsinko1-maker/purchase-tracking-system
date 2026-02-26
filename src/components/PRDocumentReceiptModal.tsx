@@ -212,20 +212,22 @@ export default function PRDocumentReceiptModal({
                         </span>
                       </div>
 
-                      {/* ผู้ขอซื้อ (ใครก็ได้สามารถ approve ได้) */}
+                      {/* ผู้ขอซื้อ (อนุมัติอัตโนมัติเมื่อ sync PR) */}
                       <div className="border rounded-md p-3 bg-purple-50">
                         <span className="text-sm font-medium text-gray-700">ผู้ขอซื้อ:</span>
-                        <span className="ml-2 text-xs text-gray-500">(ใครก็ได้สามารถอนุมัติได้)</span>
+                        <span className="ml-2 text-xs text-gray-500">(อนุมัติอัตโนมัติเมื่อ sync PR)</span>
 
                         {/* แสดงสถานะการอนุมัติ - เมื่ออนุมัติแล้ว */}
                         {existingReceipt?.requester_approval_at && (
                           <div className="mt-2 p-2 bg-green-100 rounded text-sm">
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.requester_approval_by}</span>
+                            {!existingReceipt.requester_approval_by_user_id && (
+                              <span className="ml-1 text-xs text-purple-600">(อนุมัติอัตโนมัติ)</span>
+                            )}
                             <span className="ml-2 text-xs text-green-700">
-                              เมื่อ: {new Date(existingReceipt.requester_approval_at).toLocaleString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                              เมื่อ: {new Date(existingReceipt.requester_approval_at).toLocaleDateString('th-TH', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                               })}
                             </span>
                             {/* ปุ่มล้างการอนุมัติสำหรับ Admin เท่านั้น */}
@@ -274,9 +276,8 @@ export default function PRDocumentReceiptModal({
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.line_approval_by}</span>
                             <span className="ml-2 text-xs text-green-700">
-                              เมื่อ: {new Date(existingReceipt.line_approval_at).toLocaleString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                              เมื่อ: {new Date(existingReceipt.line_approval_at).toLocaleDateString('th-TH', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                               })}
                             </span>
                             {/* ปุ่มล้างการอนุมัติสำหรับ Admin เท่านั้น */}
@@ -358,9 +359,8 @@ export default function PRDocumentReceiptModal({
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.cost_center_approval_by}</span>
                             <span className="ml-2 text-xs text-green-700">
-                              เมื่อ: {new Date(existingReceipt.cost_center_approval_at).toLocaleString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                              เมื่อ: {new Date(existingReceipt.cost_center_approval_at).toLocaleDateString('th-TH', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                               })}
                             </span>
                             {/* ปุ่มล้างการอนุมัติสำหรับ Admin เท่านั้น */}
@@ -443,9 +443,8 @@ export default function PRDocumentReceiptModal({
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.procurement_approval_by}</span>
                             <span className="ml-2 text-xs text-green-700">
-                              เมื่อ: {new Date(existingReceipt.procurement_approval_at).toLocaleString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                              เมื่อ: {new Date(existingReceipt.procurement_approval_at).toLocaleDateString('th-TH', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                               })}
                             </span>
                             {/* ปุ่มล้างการอนุมัติสำหรับ Admin เท่านั้น */}
@@ -502,9 +501,8 @@ export default function PRDocumentReceiptModal({
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.vpc_approval_by}</span>
                             <span className="ml-2 text-xs text-green-700">
-                              เมื่อ: {new Date(existingReceipt.vpc_approval_at).toLocaleString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                              เมื่อ: {new Date(existingReceipt.vpc_approval_at).toLocaleDateString('th-TH', {
+                                year: 'numeric', month: 'short', day: 'numeric'
                               })}
                             </span>
                             {/* ปุ่มล้างการอนุมัติสำหรับ Admin เท่านั้น */}

@@ -18,6 +18,7 @@ interface PRData {
   doc_num: number;
   date: Date | string | null;
   due_date: Date | string | null;
+  req_date: Date | string | null;
   create_date: Date | string | null;
   req_name: string | null;
   department: string | null;
@@ -170,7 +171,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
               <tbody>
                 <tr>
                   <td className="pr-2 py-0">เลขที่ PR</td>
-                  <td className="font-bold">: PR{prData.doc_num}</td>
+                  <td className="font-bold">: {prData.doc_num}</td>
                 </tr>
                 <tr>
                   <td className="pr-2 py-0">วันที่เปิด PR</td>
@@ -178,7 +179,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
                 </tr>
                 <tr>
                   <td className="pr-2 py-0">วันที่ต้องการ</td>
-                  <td>: {formatDate(prData.due_date)}</td>
+                  <td>: {formatDate(prData.req_date)}</td>
                 </tr>
                 <tr>
                   <td className="pr-2 py-0">เลข WO</td>
@@ -248,7 +249,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {documentReceipt?.requester_approval_by ? (
             <div>
               <div>{formatName(documentReceipt.requester_approval_by)}</div>
-              <div>{formatDateThai(documentReceipt.requester_approval_at)} {formatTime(documentReceipt.requester_approval_at)}</div>
+              <div>{formatDateThai(documentReceipt.requester_approval_at)}</div>
             </div>
           ) : (
             <div className="h-6">-</div>
@@ -261,7 +262,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {documentReceipt?.line_approval_by ? (
             <div>
               <div>{formatName(documentReceipt.line_approval_by)}</div>
-              <div>{formatDateThai(documentReceipt.line_approval_at)} {formatTime(documentReceipt.line_approval_at)}</div>
+              <div>{formatDateThai(documentReceipt.line_approval_at)}</div>
             </div>
           ) : (
             <div className="h-6">-</div>
@@ -274,7 +275,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {documentReceipt?.cost_center_approval_by ? (
             <div>
               <div>{formatName(documentReceipt.cost_center_approval_by)}</div>
-              <div>{formatDateThai(documentReceipt.cost_center_approval_at)} {formatTime(documentReceipt.cost_center_approval_at)}</div>
+              <div>{formatDateThai(documentReceipt.cost_center_approval_at)}</div>
             </div>
           ) : (
             <div className="h-6">-</div>
@@ -287,7 +288,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {documentReceipt?.procurement_approval_by ? (
             <div>
               <div>{formatName(documentReceipt.procurement_approval_by)}</div>
-              <div>{formatDateThai(documentReceipt.procurement_approval_at)} {formatTime(documentReceipt.procurement_approval_at)}</div>
+              <div>{formatDateThai(documentReceipt.procurement_approval_at)}</div>
             </div>
           ) : (
             <div className="h-6">-</div>
@@ -300,7 +301,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {documentReceipt?.vpc_approval_by ? (
             <div>
               <div>{formatName(documentReceipt.vpc_approval_by)}</div>
-              <div>{formatDateThai(documentReceipt.vpc_approval_at)} {formatTime(documentReceipt.vpc_approval_at)}</div>
+              <div>{formatDateThai(documentReceipt.vpc_approval_at)}</div>
             </div>
           ) : (
             <div className="h-6">-</div>

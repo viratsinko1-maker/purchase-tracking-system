@@ -22,6 +22,12 @@ const formatDuration = (minutes: number | null | undefined): string => {
   return `${days} วัน ${remainingHours} ชม.`;
 };
 
+// Helper function to format days (for approval KPI)
+const formatDurationDays = (days: number | null): string => {
+  if (days === null) return "-";
+  return `${days} วัน`;
+};
+
 // Stage names mapping
 const stageNames: Record<string, string> = {
   requester: 'ผู้ขอซื้อ',
@@ -507,7 +513,7 @@ function KPIDashboardContent() {
                                     )}
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
-                                    {formatDuration(row.avgMinutes)}
+                                    {formatDurationDays(row.avgDays)}
                                   </td>
                                 </tr>
                               ))}
@@ -959,7 +965,7 @@ function KPIDashboardContent() {
                                               {stats.count}
                                             </td>
                                             <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
-                                              {formatDuration(stats.avgMinutes)}
+                                              {formatDurationDays(stats.avgDays)}
                                             </td>
                                             <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-green-600 font-medium">
                                               {stats.onTimeCount}
@@ -1146,7 +1152,7 @@ function KPIDashboardContent() {
                                   <td className="whitespace-nowrap px-4 py-3 text-center text-sm text-gray-700">
                                     <span className="font-medium">{Number(config.target_hours).toFixed(1)} ชม.</span>
                                     <span className="ml-1 text-gray-400">
-                                      ({config.target_minutes} นาที / {(config.target_minutes / 60 / 24).toFixed(1)} วัน)
+                                      ({config.target_minutes ?? 0} นาที / {((config.target_minutes ?? 0) / 60 / 24).toFixed(1)} วัน)
                                     </span>
                                   </td>
                                   <td className="whitespace-nowrap px-4 py-3 text-center">

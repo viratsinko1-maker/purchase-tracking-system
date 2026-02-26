@@ -50,7 +50,7 @@ export const kpiRouter = createTRPCRouter({
 
       const stages: Record<string, {
         count: number;
-        avgMinutes: number | null;
+        avgDays: number | null;
         onTimeCount: number;
         lateCount: number;
         onTimeRate: number | null;
@@ -60,7 +60,7 @@ export const kpiRouter = createTRPCRouter({
         const total = s.on_time_count + s.late_count;
         stages[s.approval_stage] = {
           count: s.total_count,
-          avgMinutes: Number(s.avg_duration_min),
+          avgDays: Number(s.avg_duration_days),
           onTimeCount: s.on_time_count,
           lateCount: s.late_count,
           onTimeRate: total > 0 ? Math.round((s.on_time_count / total) * 100) : null,
@@ -76,7 +76,7 @@ export const kpiRouter = createTRPCRouter({
           stage: d.approval_stage,
           stageName: stageNames[d.approval_stage] || d.approval_stage,
           approvedAt: d.approved_at,
-          durationMinutes: Math.round(Number(d.duration_minutes)),
+          durationDays: Number(d.duration_days),
           isOnTime: d.is_on_time,
         })),
       };
@@ -105,7 +105,7 @@ export const kpiRouter = createTRPCRouter({
             weekEnd: r.week_end,
             approvalStage: r.approval_stage,
             totalCount: r.total_count,
-            avgMinutes: Math.round(Number(r.avg_duration_min)),
+            avgDays: Number(r.avg_duration_days),
             onTimeCount: r.on_time_count,
             lateCount: r.late_count,
             onTimeRate: total > 0 ? Math.round((r.on_time_count / total) * 100) : null,
@@ -135,7 +135,7 @@ export const kpiRouter = createTRPCRouter({
             month: r.month,
             approvalStage: r.approval_stage,
             totalCount: r.total_count,
-            avgMinutes: Math.round(Number(r.avg_duration_min)),
+            avgDays: Number(r.avg_duration_days),
             onTimeCount: r.on_time_count,
             lateCount: r.late_count,
             onTimeRate: total > 0 ? Math.round((r.on_time_count / total) * 100) : null,
@@ -164,7 +164,7 @@ export const kpiRouter = createTRPCRouter({
             year: r.year,
             approvalStage: r.approval_stage,
             totalCount: r.total_count,
-            avgMinutes: Math.round(Number(r.avg_duration_min)),
+            avgDays: Number(r.avg_duration_days),
             onTimeCount: r.on_time_count,
             lateCount: r.late_count,
             onTimeRate: total > 0 ? Math.round((r.on_time_count / total) * 100) : null,
@@ -347,8 +347,8 @@ export const kpiRouter = createTRPCRouter({
           ...(dateFrom || dateTo ? { created_at: dateFilter } : {}),
         },
         _count: { id: true },
-        _avg: { duration_minutes: true },
-        _sum: { duration_seconds: true },
+        _avg: { duration_days: true },
+        _sum: { duration_days: true },
       });
 
       // Get on-time rate per stage
@@ -365,7 +365,7 @@ export const kpiRouter = createTRPCRouter({
       // Calculate on-time rate per stage
       const stageStats: Record<string, {
         count: number;
-        avgMinutes: number | null;
+        avgDays: number | null;
         onTimeCount: number;
         lateCount: number;
         onTimeRate: number | null;
@@ -374,7 +374,7 @@ export const kpiRouter = createTRPCRouter({
       for (const metric of metrics) {
         stageStats[metric.approval_stage] = {
           count: metric._count.id,
-          avgMinutes: metric._avg.duration_minutes ? Number(metric._avg.duration_minutes) : null,
+          avgDays: metric._avg.duration_days ? Number(metric._avg.duration_days) : null,
           onTimeCount: 0,
           lateCount: 0,
           onTimeRate: null,
@@ -503,12 +503,12 @@ export const kpiRouter = createTRPCRouter({
       const approvalTrend = await ctx.db.$queryRawUnsafe<Array<{
         date: Date;
         count: number;
-        avg_minutes: number;
+        avg_days: number;
       }>>(`
         SELECT
           DATE(created_at) as date,
           COUNT(*)::INT as count,
-          AVG(duration_minutes)::FLOAT as avg_minutes
+          AVG(duration_days)::FLOAT as avg_days
         FROM approval_kpi_metric
         WHERE user_id = $1 AND created_at >= $2
         GROUP BY DATE(created_at)
@@ -566,7 +566,7 @@ export const kpiRouter = createTRPCRouter({
         by: ['user_id', 'user_name', 'approval_stage'],
         where: whereClause,
         _count: { id: true },
-        _avg: { duration_minutes: true },
+        _avg: { duration_days: true },
       });
 
       // Get on-time stats
@@ -585,7 +585,7 @@ export const kpiRouter = createTRPCRouter({
         userName: string;
         stage: string;
         count: number;
-        avgMinutes: number | null;
+        avgDays: number | null;
         onTimeCount: number;
         lateCount: number;
         onTimeRate: number | null;
@@ -598,7 +598,7 @@ export const kpiRouter = createTRPCRouter({
           userName: m.user_name,
           stage: m.approval_stage,
           count: m._count.id,
-          avgMinutes: m._avg.duration_minutes ? Number(m._avg.duration_minutes) : null,
+          avgDays: m._avg.duration_days ? Number(m._avg.duration_days) : null,
           onTimeCount: 0,
           lateCount: 0,
           onTimeRate: null,
@@ -1537,7 +1537,7 @@ export const kpiRouter = createTRPCRouter({
           onTime: 0,
           late: 0,
           onTimeRate: null as number | null,
-          avgMinutes: 0,
+          avgDays: 0,
         };
       }
 
@@ -1567,7 +1567,7 @@ export const kpiRouter = createTRPCRouter({
       const metrics = await ctx.db.approval_kpi_metric.aggregate({
         where: whereClause,
         _count: { id: true },
-        _avg: { duration_minutes: true },
+        _avg: { duration_days: true },
       });
 
       // Get on-time stats
@@ -1595,7 +1595,7 @@ export const kpiRouter = createTRPCRouter({
         onTime,
         late,
         onTimeRate,
-        avgMinutes: metrics._avg.duration_minutes ? Math.round(Number(metrics._avg.duration_minutes)) : 0,
+        avgDays: metrics._avg.duration_days ? Number(metrics._avg.duration_days) : 0,
       };
     }),
 
@@ -1795,8 +1795,8 @@ export const kpiRouter = createTRPCRouter({
         by: ['user_id', 'user_name'],
         where: whereClause,
         _count: { id: true },
-        _avg: { duration_minutes: true },
-        _sum: { duration_seconds: true },
+        _avg: { duration_days: true },
+        _sum: { duration_days: true },
       });
 
       // Get on-time stats per user
@@ -1816,7 +1816,7 @@ export const kpiRouter = createTRPCRouter({
         total: number;
         onTime: number;
         late: number;
-        avgMinutes: number;
+        avgDays: number;
       }> = new Map();
 
       for (const m of metrics) {
@@ -1826,7 +1826,7 @@ export const kpiRouter = createTRPCRouter({
           total: m._count.id,
           onTime: 0,
           late: 0,
-          avgMinutes: m._avg.duration_minutes ? Math.round(Number(m._avg.duration_minutes)) : 0,
+          avgDays: m._avg.duration_days ? Number(m._avg.duration_days) : 0,
         });
       }
 
@@ -1842,13 +1842,13 @@ export const kpiRouter = createTRPCRouter({
       let overallTotal = 0;
       let overallOnTime = 0;
       let overallLate = 0;
-      let overallMinutes = 0;
+      let overallDays = 0;
 
       const byUser = Array.from(userMap.values()).map(u => {
         overallTotal += u.total;
         overallOnTime += u.onTime;
         overallLate += u.late;
-        overallMinutes += u.avgMinutes * u.total;
+        overallDays += u.avgDays * u.total;
 
         const totalWithSLA = u.onTime + u.late;
         return {
@@ -1865,7 +1865,7 @@ export const kpiRouter = createTRPCRouter({
           onTime: overallOnTime,
           late: overallLate,
           onTimeRate: overallTotalWithSLA > 0 ? Math.round((overallOnTime / overallTotalWithSLA) * 100) : null,
-          avgMinutes: overallTotal > 0 ? Math.round(overallMinutes / overallTotal) : 0,
+          avgDays: overallTotal > 0 ? Number((overallDays / overallTotal).toFixed(2)) : 0,
         },
         byUser,
       };
@@ -2123,7 +2123,7 @@ export const kpiRouter = createTRPCRouter({
       const { userId, year, quarter } = input;
 
       if (!userId) {
-        return { total: 0, onTime: 0, late: 0, onTimeRate: null as number | null, avgMinutes: 0 };
+        return { total: 0, onTime: 0, late: 0, onTimeRate: null as number | null, avgDays: 0 };
       }
 
       let dateFrom: Date | undefined;
@@ -2149,7 +2149,7 @@ export const kpiRouter = createTRPCRouter({
       const metrics = await ctx.db.approval_kpi_metric.aggregate({
         where: whereClause,
         _count: { id: true },
-        _avg: { duration_minutes: true },
+        _avg: { duration_days: true },
       });
 
       const onTimeStats = await ctx.db.approval_kpi_metric.groupBy({
@@ -2173,7 +2173,7 @@ export const kpiRouter = createTRPCRouter({
         onTime,
         late,
         onTimeRate,
-        avgMinutes: metrics._avg.duration_minutes ? Math.round(Number(metrics._avg.duration_minutes)) : 0,
+        avgDays: metrics._avg.duration_days ? Number(metrics._avg.duration_days) : 0,
       };
     }),
 

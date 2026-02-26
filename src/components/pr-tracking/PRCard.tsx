@@ -28,6 +28,7 @@ interface PRData {
   doc_status: string;
   create_date: string | Date | null;
   doc_due_date: string | Date | null;
+  req_date: string | Date | null;
   job_name: string | null;
   req_name: string | null;
   department_name: string | null;
@@ -47,6 +48,7 @@ interface PRData {
   vpc_approval_at?: string | null;
   vpc_approval_by?: string | null;
   po_numbers?: number[];
+  wo_numbers_arr?: number[];
 }
 
 interface PRCardProps {
@@ -120,19 +122,28 @@ export default function PRCard({
 
           {/* OCR Code (Department) */}
           {pr.primary_ocr_code2 && (
-            <span
-              className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200 cursor-help"
-              title={ocrCodeMap.get(pr.primary_ocr_code2) || pr.primary_ocr_code2}
-            >
-              {pr.primary_ocr_code2}
-            </span>
+            <>
+              <span
+                className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200"
+              >
+                {pr.primary_ocr_code2}
+              </span>
+              {ocrCodeMap.get(pr.primary_ocr_code2) && (
+                <span className="text-xs text-purple-700">
+                  {ocrCodeMap.get(pr.primary_ocr_code2)}
+                </span>
+              )}
+            </>
           )}
-
-          {/* Date */}
-          <span className="text-xs text-gray-500">
-            {formatDate(pr.create_date)} | ครบ: {formatDate(pr.doc_due_date)}
-          </span>
         </div>
+
+        {/* Date */}
+        <p className="mt-0.5 text-xs text-gray-500">
+          {formatDate(pr.create_date)} | ต้องการ: {formatDate(pr.req_date)}
+          {pr.wo_numbers_arr && pr.wo_numbers_arr.length > 0 && (
+            <> | WO-{pr.wo_numbers_arr.join(', WO-')}</>
+          )}
+        </p>
 
         {/* Job Name */}
         {pr.job_name && (
@@ -281,8 +292,8 @@ export default function PRCard({
                   <>
                     <span>{pr.requester_approval_by}</span>
                     <span className="text-gray-500">
-                      ({new Date(pr.requester_approval_at).toLocaleString('th-TH', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      ({new Date(pr.requester_approval_at).toLocaleDateString('th-TH', {
+                        day: 'numeric', month: 'short', year: 'numeric'
                       })})
                     </span>
                   </>
@@ -298,8 +309,8 @@ export default function PRCard({
                   <>
                     <span>{pr.line_approval_by}</span>
                     <span className="text-gray-500">
-                      ({new Date(pr.line_approval_at).toLocaleString('th-TH', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      ({new Date(pr.line_approval_at).toLocaleDateString('th-TH', {
+                        day: 'numeric', month: 'short', year: 'numeric'
                       })})
                     </span>
                   </>
@@ -315,8 +326,8 @@ export default function PRCard({
                   <>
                     <span>{pr.cost_center_approval_by}</span>
                     <span className="text-gray-500">
-                      ({new Date(pr.cost_center_approval_at).toLocaleString('th-TH', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      ({new Date(pr.cost_center_approval_at).toLocaleDateString('th-TH', {
+                        day: 'numeric', month: 'short', year: 'numeric'
                       })})
                     </span>
                   </>
@@ -332,8 +343,8 @@ export default function PRCard({
                   <>
                     <span>{pr.procurement_approval_by}</span>
                     <span className="text-gray-500">
-                      ({new Date(pr.procurement_approval_at).toLocaleString('th-TH', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      ({new Date(pr.procurement_approval_at).toLocaleDateString('th-TH', {
+                        day: 'numeric', month: 'short', year: 'numeric'
                       })})
                     </span>
                   </>
@@ -349,8 +360,8 @@ export default function PRCard({
                   <>
                     <span>{pr.vpc_approval_by}</span>
                     <span className="text-gray-500">
-                      ({new Date(pr.vpc_approval_at).toLocaleString('th-TH', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      ({new Date(pr.vpc_approval_at).toLocaleDateString('th-TH', {
+                        day: 'numeric', month: 'short', year: 'numeric'
                       })})
                     </span>
                   </>

@@ -6,6 +6,140 @@ import sql from "mssql";
 import { createTRPCRouter, createTableProcedure } from "~/server/api/trpc";
 import { sqlConfig } from "./config";
 
+// 🔹 Auto-approve ขั้น 1 (REQUESTER) สำหรับ PR ที่ยังไม่มี pr_document_receipt
+import { Prisma, type PrismaClient } from "@prisma/client";
+
+async function autoApproveRequesterForNewPRs(
+  db: PrismaClient,
+  prDocNums: number[]
+): Promise<{ created: number; skipped: number }> {
+  if (prDocNums.length === 0) return { created: 0, skipped: 0 };
+
+  // 1. หา PR ที่มี receipt อยู่แล้ว → skip
+  const existingReceipts = await db.pr_document_receipt.findMany({
+    where: { pr_doc_num: { in: prDocNums } },
+    select: { pr_doc_num: true },
+  });
+  const existingSet = new Set(existingReceipts.map(r => r.pr_doc_num));
+  const newPrNums = prDocNums.filter(n => !existingSet.has(n));
+
+  if (newPrNums.length === 0) return { created: 0, skipped: prDocNums.length };
+
+  // 2. ดึง pr_master เพื่อเอา req_name + create_date
+  const prMasters = await db.pr_master.findMany({
+    where: { doc_num: { in: newPrNums } },
+    select: { doc_num: true, req_name: true, create_date: true, doc_date: true },
+  });
+
+  // 3. ดึง primary ocr_code2 สำหรับแต่ละ PR
+  const ocrResults = await db.$queryRawUnsafe<{ pr_doc_num: number; ocr_code2: string }[]>(`
+    SELECT DISTINCT ON (pr_doc_num) pr_doc_num, ocr_code2
+    FROM (
+      SELECT pr_doc_num, ocr_code2, COUNT(*) as cnt, MIN(line_num) as first_line
+      FROM pr_lines
+      WHERE pr_doc_num = ANY($1) AND ocr_code2 IS NOT NULL AND ocr_code2 != ''
+      GROUP BY pr_doc_num, ocr_code2
+      ORDER BY pr_doc_num, cnt DESC, first_line ASC
+    ) sub
+  `, newPrNums);
+
+  const ocrMap = new Map(ocrResults.map(r => [r.pr_doc_num, r.ocr_code2]));
+
+  // 4. Resolve approver lists — cache ตาม ocr_code2
+  const uniqueOcrCodes = [...new Set(ocrResults.map(r => r.ocr_code2))];
+  const approverCache = new Map<string, {
+    lineApprovers: { userId: string; username: string; email?: string; priority: number }[];
+    costCenterApprovers: { userId: string; username: string; email?: string; priority: number }[];
+  }>();
+
+  if (uniqueOcrCodes.length > 0) {
+    const ocrCodeRecords = await db.ocr_code_and_name.findMany({
+      where: { name: { in: uniqueOcrCodes } },
+      select: { id: true, name: true },
+    });
+
+    const ocrCodeIds = ocrCodeRecords.map(o => o.id);
+
+    if (ocrCodeIds.length > 0) {
+      const allApprovers = await db.ocr_approver.findMany({
+        where: { ocrCodeId: { in: ocrCodeIds } },
+        orderBy: [{ approverType: 'asc' }, { priority: 'asc' }],
+      });
+
+      const userIds = [...new Set(allApprovers.map(a => a.userProductionId))];
+      const users = await db.user_production.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, email: true, username: true, name: true },
+      });
+      const userMap = new Map(users.map(u => [u.id, u]));
+
+      // Group approvers by ocrCodeId
+      for (const ocrCode of ocrCodeRecords) {
+        const lineApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+        const costCenterApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+
+        for (const approver of allApprovers.filter(a => a.ocrCodeId === ocrCode.id)) {
+          const user = userMap.get(approver.userProductionId);
+          const approverData = {
+            userId: approver.userProductionId,
+            username: user?.username || user?.name || user?.email || 'Unknown',
+            email: user?.email || undefined,
+            priority: approver.priority,
+          };
+          if (approver.approverType === 'line') {
+            lineApprovers.push(approverData);
+          } else if (approver.approverType === 'cost_center') {
+            costCenterApprovers.push(approverData);
+          }
+        }
+
+        approverCache.set(ocrCode.name, { lineApprovers, costCenterApprovers });
+      }
+    }
+  }
+
+  // 5. สร้าง pr_document_receipt + auto-approve requester
+  let created = 0;
+  for (const pr of prMasters) {
+    try {
+      const ocrCode2 = ocrMap.get(pr.doc_num) || null;
+      const approvers = ocrCode2 ? approverCache.get(ocrCode2) : null;
+
+      // ใช้ create_date, fallback เป็น doc_date
+      const approvalDate = pr.create_date || pr.doc_date;
+      if (!approvalDate) continue;
+
+      const dateOnly = new Date(approvalDate);
+      const reqName = pr.req_name || 'ไม่ระบุ';
+
+      await db.pr_document_receipt.create({
+        data: {
+          pr_doc_num: pr.doc_num,
+          receipt_date: dateOnly,
+          receipt_datetime: dateOnly,
+          received_by: reqName,
+          received_by_user_id: null,
+          ocr_code2: ocrCode2,
+          line_approvers: approvers?.lineApprovers && approvers.lineApprovers.length > 0
+            ? approvers.lineApprovers : Prisma.JsonNull,
+          cost_center_approvers: approvers?.costCenterApprovers && approvers.costCenterApprovers.length > 0
+            ? approvers.costCenterApprovers : Prisma.JsonNull,
+          requester_approval_by: reqName,
+          requester_approval_by_user_id: null,
+          requester_approval_at: dateOnly,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+      created++;
+    } catch (err) {
+      console.error(`[AUTO-APPROVE] Failed for PR ${pr.doc_num}:`, err);
+    }
+  }
+
+  return { created, skipped: prDocNums.length - created };
+}
+
 export const prSyncRouter = createTRPCRouter({
   // 🔹 Sync ข้อมูลจาก SAP (Incremental Sync + PO Check + Full Sync ทุกวันอาทิตย์ 17:00)
   sync: createTableProcedure('pr_tracking', 'sync')
@@ -72,8 +206,7 @@ export const prSyncRouter = createTRPCRouter({
           console.log('[SYNC] Full Sync - backing up document receipt and approval data...');
 
           documentReceiptBackup = await ctx.db.$queryRawUnsafe(`
-            SELECT pr_doc_num, receipt_date, received_by, received_by_user_id, created_at, updated_at
-            FROM pr_document_receipt
+            SELECT * FROM pr_document_receipt
           `) as any[];
 
           documentApprovalBackup = await ctx.db.$queryRawUnsafe(`
@@ -290,14 +423,54 @@ export const prSyncRouter = createTRPCRouter({
 
               if (prExists[0]?.exists) {
                 await ctx.db.$queryRawUnsafe(`
-                  INSERT INTO pr_document_receipt (pr_doc_num, receipt_date, received_by, received_by_user_id, created_at, updated_at)
-                  VALUES ($1, $2, $3, $4, $5, $6)
+                  INSERT INTO pr_document_receipt (
+                    pr_doc_num, receipt_date, receipt_datetime, received_by, received_by_user_id,
+                    ocr_code2, line_approvers, cost_center_approvers,
+                    requester_approval_by, requester_approval_by_user_id, requester_approval_at,
+                    line_approval_by, line_approval_by_user_id, line_approval_at,
+                    cost_center_approval_by, cost_center_approval_by_user_id, cost_center_approval_at,
+                    procurement_approval_by, procurement_approval_by_user_id, procurement_approval_at,
+                    vpc_approval_by, vpc_approval_by_user_id, vpc_approval_at,
+                    created_at, updated_at
+                  )
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
                   ON CONFLICT (pr_doc_num) DO UPDATE SET
                     receipt_date = EXCLUDED.receipt_date,
+                    receipt_datetime = EXCLUDED.receipt_datetime,
                     received_by = EXCLUDED.received_by,
                     received_by_user_id = EXCLUDED.received_by_user_id,
+                    ocr_code2 = EXCLUDED.ocr_code2,
+                    line_approvers = EXCLUDED.line_approvers,
+                    cost_center_approvers = EXCLUDED.cost_center_approvers,
+                    requester_approval_by = EXCLUDED.requester_approval_by,
+                    requester_approval_by_user_id = EXCLUDED.requester_approval_by_user_id,
+                    requester_approval_at = EXCLUDED.requester_approval_at,
+                    line_approval_by = EXCLUDED.line_approval_by,
+                    line_approval_by_user_id = EXCLUDED.line_approval_by_user_id,
+                    line_approval_at = EXCLUDED.line_approval_at,
+                    cost_center_approval_by = EXCLUDED.cost_center_approval_by,
+                    cost_center_approval_by_user_id = EXCLUDED.cost_center_approval_by_user_id,
+                    cost_center_approval_at = EXCLUDED.cost_center_approval_at,
+                    procurement_approval_by = EXCLUDED.procurement_approval_by,
+                    procurement_approval_by_user_id = EXCLUDED.procurement_approval_by_user_id,
+                    procurement_approval_at = EXCLUDED.procurement_approval_at,
+                    vpc_approval_by = EXCLUDED.vpc_approval_by,
+                    vpc_approval_by_user_id = EXCLUDED.vpc_approval_by_user_id,
+                    vpc_approval_at = EXCLUDED.vpc_approval_at,
                     updated_at = EXCLUDED.updated_at
-                `, receipt.pr_doc_num, receipt.receipt_date, receipt.received_by, receipt.received_by_user_id, receipt.created_at, receipt.updated_at);
+                `,
+                  receipt.pr_doc_num, receipt.receipt_date, receipt.receipt_datetime,
+                  receipt.received_by, receipt.received_by_user_id,
+                  receipt.ocr_code2,
+                  receipt.line_approvers ? JSON.stringify(receipt.line_approvers) : null,
+                  receipt.cost_center_approvers ? JSON.stringify(receipt.cost_center_approvers) : null,
+                  receipt.requester_approval_by, receipt.requester_approval_by_user_id, receipt.requester_approval_at,
+                  receipt.line_approval_by, receipt.line_approval_by_user_id, receipt.line_approval_at,
+                  receipt.cost_center_approval_by, receipt.cost_center_approval_by_user_id, receipt.cost_center_approval_at,
+                  receipt.procurement_approval_by, receipt.procurement_approval_by_user_id, receipt.procurement_approval_at,
+                  receipt.vpc_approval_by, receipt.vpc_approval_by_user_id, receipt.vpc_approval_at,
+                  receipt.created_at, receipt.updated_at
+                );
               }
             } catch (error) {
               console.error(`[SYNC] Failed to restore receipt for PR ${receipt.pr_doc_num}:`, error);
@@ -330,6 +503,14 @@ export const prSyncRouter = createTRPCRouter({
           }
 
           console.log(`[SYNC] Restored ${documentReceiptBackup.length} receipt records and ${documentApprovalBackup.length} approval records`);
+        }
+
+        // ✅ STEP 6.6: Auto-approve ขั้น 1 (REQUESTER) สำหรับ PR ที่ยังไม่มี receipt
+        if (jsonData.pr_master.length > 0) {
+          const prDocNums = jsonData.pr_master.map((pr: { doc_num: number }) => pr.doc_num);
+          console.log(`[SYNC] Auto-approving requester for ${prDocNums.length} PRs...`);
+          const autoResult = await autoApproveRequesterForNewPRs(ctx.db, prDocNums);
+          console.log(`[SYNC] Auto-approved: ${autoResult.created} new, ${autoResult.skipped} skipped`);
         }
 
         // ✅ STEP 7: บันทึก sync log
@@ -575,5 +756,34 @@ export const prSyncRouter = createTRPCRouter({
       `, input.syncLogId);
 
       return changes;
+    }),
+
+  // 🔹 ดึงรายการ PR ที่ยังไม่มี pr_document_receipt (สำหรับ Admin backfill)
+  getUnreceiptedPRs: createTableProcedure('admin_sync_pr', 'sync')
+    .query(async ({ ctx }) => {
+      const prs = await ctx.db.$queryRawUnsafe<Array<{
+        doc_num: number;
+        req_name: string | null;
+        create_date: Date | null;
+        doc_date: Date | null;
+        job_name: string | null;
+      }>>(`
+        SELECT m.doc_num, m.req_name, m.create_date, m.doc_date, m.job_name
+        FROM pr_master m
+        LEFT JOIN pr_document_receipt r ON m.doc_num = r.pr_doc_num
+        WHERE r.pr_doc_num IS NULL
+        ORDER BY m.doc_num DESC
+      `);
+      return prs;
+    }),
+
+  // 🔹 Backfill auto-approve ขั้น 1 สำหรับ PR ที่เลือก (Admin only)
+  backfillRequesterApproval: createTableProcedure('admin_sync_pr', 'sync')
+    .input(z.object({
+      prDocNums: z.array(z.number()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await autoApproveRequesterForNewPRs(ctx.db, input.prDocNums);
+      return result;
     }),
 });

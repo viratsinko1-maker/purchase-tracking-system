@@ -126,7 +126,8 @@ export const prOverviewRouter = createTRPCRouter({
             SELECT project FROM pr_lines
             WHERE pr_doc_num = s.doc_num AND project IS NOT NULL AND project != ''
             ORDER BY line_num LIMIT 1
-          ) AS project_code_fallback
+          ) AS project_code_fallback,
+          (SELECT req_date FROM pr_master WHERE doc_num = s.doc_num) AS req_date
         FROM mv_pr_summary s
         LEFT JOIN pr_document_receipt r ON s.doc_num = r.pr_doc_num
         LEFT JOIN pr_document_approval a ON s.doc_num = a.pr_doc_num

@@ -435,8 +435,8 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                         <p className="font-medium text-gray-900">{formatDate(prData.date)}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600">วันที่ครบกำหนด</p>
-                        <p className="font-medium text-gray-900">{formatDate(prData.due_date)}</p>
+                        <p className="text-sm text-gray-600">วันที่ต้องการของ</p>
+                        <p className="font-medium text-gray-900">{formatDate(prData.req_date)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-600">วันที่อัพเดตล่าสุด</p>
@@ -800,7 +800,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             {documentReceipt.requester_approval_at ? (
                               <div className="ml-5 text-sm">
                                 <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.requester_approval_by || '-'}</span></p>
-                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.requester_approval_at)}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDate(documentReceipt.requester_approval_at)}</span></p>
                               </div>
                             ) : (
                               <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
@@ -820,7 +820,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             {documentReceipt.line_approval_at ? (
                               <div className="ml-5 text-sm">
                                 <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.line_approval_by || '-'}</span></p>
-                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.line_approval_at)}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDate(documentReceipt.line_approval_at)}</span></p>
                               </div>
                             ) : (
                               <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
@@ -840,7 +840,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             {documentReceipt.cost_center_approval_at ? (
                               <div className="ml-5 text-sm">
                                 <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.cost_center_approval_by || '-'}</span></p>
-                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.cost_center_approval_at)}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDate(documentReceipt.cost_center_approval_at)}</span></p>
                               </div>
                             ) : (
                               <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
@@ -860,7 +860,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             {documentReceipt.procurement_approval_at ? (
                               <div className="ml-5 text-sm">
                                 <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.procurement_approval_by || '-'}</span></p>
-                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.procurement_approval_at)}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDate(documentReceipt.procurement_approval_at)}</span></p>
                               </div>
                             ) : (
                               <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>
@@ -880,7 +880,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             {documentReceipt.vpc_approval_at ? (
                               <div className="ml-5 text-sm">
                                 <p><span className="text-gray-600">อนุมัติโดย:</span> <span className="font-medium">{documentReceipt.vpc_approval_by || '-'}</span></p>
-                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDateTime(documentReceipt.vpc_approval_at)}</span></p>
+                                <p><span className="text-gray-600">เมื่อ:</span> <span className="font-medium">{formatDate(documentReceipt.vpc_approval_at)}</span></p>
                               </div>
                             ) : (
                               <p className="ml-5 text-sm text-gray-500 italic">รอการอนุมัติ</p>

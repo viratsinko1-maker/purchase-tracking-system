@@ -598,7 +598,6 @@ function ReceiveGoodNewContent() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
                         <th className="px-3 py-3 text-left text-xs font-medium uppercase text-gray-500">Item Code</th>
                         <th className="px-3 py-3 text-left text-xs font-medium uppercase text-gray-500">Description</th>
                         <th className="px-3 py-3 text-right text-xs font-medium uppercase text-gray-500">Qty (คงเหลือ)</th>
@@ -609,7 +608,6 @@ function ReceiveGoodNewContent() {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {receiveLines.map((line) => (
                         <tr key={line.lineId} className={line.isChecked ? "bg-green-50" : "hover:bg-gray-50"}>
-                          <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-900">{line.lineNum}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-600">{line.itemCode || "-"}</td>
                           <td className="px-3 py-3 text-sm text-gray-900 max-w-xs truncate" title={line.description || ""}>{line.description || "-"}</td>
                           <td className="whitespace-nowrap px-3 py-3 text-sm text-right text-gray-900">

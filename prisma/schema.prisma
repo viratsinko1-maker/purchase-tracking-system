@@ -345,7 +345,7 @@ model pr_document_approval {
   reason              String?
   approved_by         String?   @db.VarChar(255)
   approved_by_user_id String?   @db.VarChar(255)
-  approved_at         DateTime  @default(now()) @db.Timestamp(6)
+  approved_at         DateTime  @default(now()) @db.Date
   created_at          DateTime? @default(now()) @db.Timestamp(6)
   updated_at          DateTime? @default(now()) @db.Timestamp(6)
 
@@ -377,23 +377,23 @@ model pr_document_receipt {
   received_by_user_id             String?   @db.VarChar(255)
   created_at                      DateTime? @default(now()) @db.Timestamp(6)
   updated_at                      DateTime? @default(now()) @db.Timestamp(6)
-  cost_center_approval_at         DateTime? @db.Timestamp(6)
+  cost_center_approval_at         DateTime? @db.Date
   cost_center_approval_by         String?   @db.VarChar(255)
   cost_center_approval_by_user_id String?   @db.VarChar(255)
   cost_center_approvers           Json?
-  line_approval_at                DateTime? @db.Timestamp(6)
+  line_approval_at                DateTime? @db.Date
   line_approval_by                String?   @db.VarChar(255)
   line_approval_by_user_id        String?   @db.VarChar(255)
   line_approvers                  Json?
   ocr_code2                       String?   @db.VarChar(50)
-  procurement_approval_at         DateTime? @db.Timestamp(6)
+  procurement_approval_at         DateTime? @db.Date
   procurement_approval_by         String?   @db.VarChar(255)
   procurement_approval_by_user_id String?   @db.VarChar(255)
   receipt_datetime                DateTime? @db.Timestamp(6)
-  requester_approval_at           DateTime? @db.Timestamp(6)
+  requester_approval_at           DateTime? @db.Date
   requester_approval_by           String?   @db.VarChar(255)
   requester_approval_by_user_id   String?   @db.VarChar(255)
-  vpc_approval_at                 DateTime? @db.Timestamp(6)
+  vpc_approval_at                 DateTime? @db.Date
   vpc_approval_by                 String?   @db.VarChar(255)
   vpc_approval_by_user_id         String?   @db.VarChar(255)
 
@@ -1015,11 +1015,10 @@ model approval_kpi_metric {
   approval_stage     String    @db.VarChar(20)              // "requester" | "line" | "cost_center" | "procurement" | "vpc"
   user_id            String    @db.VarChar(255)             // Who approved
   user_name          String    @db.VarChar(255)             // Name at time of approval
-  previous_stage_at  DateTime? @db.Timestamp(6)             // When previous stage completed (null for requester)
-  approved_at        DateTime  @db.Timestamp(6)             // When this user approved
-  duration_seconds   Int                                    // Time taken in seconds
-  duration_minutes   Decimal   @db.Decimal(10, 2)           // Time taken in minutes (for display)
-  sla_target_minutes Int?                                   // Target from config (null = no SLA)
+  previous_stage_at  DateTime? @db.Date                     // When previous stage completed (null for requester)
+  approved_at        DateTime  @db.Date                     // When this user approved
+  duration_days      Int                                    // Time taken in days
+  sla_target_days    Int?                                   // Target from config in days (null = no SLA)
   is_on_time         Boolean?                               // true = within SLA, false = exceeded
   ocr_code2          String?   @db.VarChar(50)              // Department code
   created_at         DateTime  @default(now()) @db.Timestamp(6)
@@ -1036,8 +1035,9 @@ model kpi_sla_config {
   id             Int       @id @default(autoincrement())
   kpi_type       String    @db.VarChar(30)                  // "approval" | "receive_confirm"
   stage          String?   @db.VarChar(30)                  // For approval: "requester"|"line"|etc. (null = all stages)
-  target_minutes Int                                        // SLA target in minutes
+  target_minutes Int?                                       // SLA target in minutes (for receive_confirm)
   target_hours   Decimal?  @db.Decimal(10, 2)               // Computed: target_minutes / 60
+  target_days    Int?                                        // SLA target in days (for approval)
   description    String?                                    // Description for admin
   is_active      Boolean   @default(true)
   created_at     DateTime  @default(now()) @db.Timestamp(6)
@@ -1185,8 +1185,8 @@ model kpi_approval_daily {
   date               DateTime @db.Date
   approval_stage     String   @db.VarChar(20)
   total_count        Int      @default(0)
-  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
-  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  total_duration_days Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_days   Decimal  @default(0) @db.Decimal(10, 2)
   on_time_count      Int      @default(0)
   late_count         Int      @default(0)
   created_at         DateTime @default(now()) @db.Timestamp(6)
@@ -1208,8 +1208,8 @@ model kpi_approval_weekly {
   week_end           DateTime @db.Date
   approval_stage     String   @db.VarChar(20)
   total_count        Int      @default(0)
-  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
-  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  total_duration_days Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_days   Decimal  @default(0) @db.Decimal(10, 2)
   on_time_count      Int      @default(0)
   late_count         Int      @default(0)
   created_at         DateTime @default(now()) @db.Timestamp(6)
@@ -1229,8 +1229,8 @@ model kpi_approval_monthly {
   month              Int
   approval_stage     String   @db.VarChar(20)
   total_count        Int      @default(0)
-  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
-  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  total_duration_days Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_days   Decimal  @default(0) @db.Decimal(10, 2)
   on_time_count      Int      @default(0)
   late_count         Int      @default(0)
   created_at         DateTime @default(now()) @db.Timestamp(6)
@@ -1249,8 +1249,8 @@ model kpi_approval_yearly {
   year               Int
   approval_stage     String   @db.VarChar(20)
   total_count        Int      @default(0)
-  total_duration_min Decimal  @default(0) @db.Decimal(10, 2)
-  avg_duration_min   Decimal  @default(0) @db.Decimal(10, 2)
+  total_duration_days Decimal  @default(0) @db.Decimal(10, 2)
+  avg_duration_days   Decimal  @default(0) @db.Decimal(10, 2)
   on_time_count      Int      @default(0)
   late_count         Int      @default(0)
   created_at         DateTime @default(now()) @db.Timestamp(6)
