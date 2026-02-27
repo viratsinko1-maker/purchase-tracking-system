@@ -70,7 +70,7 @@ async function handler(
 
           // Get all active users from TMK_PDPJ01 (only those with verified email)
           const result = await tmkClient.query(`
-            SELECT id, name, email, "isActive"
+            SELECT id, name, email, password, "isActive"
             FROM "User"
             WHERE email IS NOT NULL
               AND email != ''
@@ -81,6 +81,7 @@ async function handler(
             id: string;
             name: string;
             email: string;
+            password: string | null;
             isActive: boolean;
           }>;
 
@@ -106,7 +107,7 @@ async function handler(
             });
 
             if (existingUser) {
-              // Update existing user (only name/username, keep password/role)
+              // Update existing user (name/username + password from TMK)
               await db.user_production.update({
                 where: { email },
                 data: {
@@ -115,11 +116,12 @@ async function handler(
                   sourceId: tmkUser.id,
                   isActive: true, // Re-activate if was deactivated
                   lastSyncAt: new Date(),
+                  ...(tmkUser.password ? { password: tmkUser.password } : {}),
                 },
               });
               updated++;
             } else {
-              // Create new user with default password and role
+              // Create new user with password from TMK (fallback to default "1234")
               await db.user_production.create({
                 data: {
                   id: tmkUser.id, // Use TMK user ID as primary key
@@ -127,7 +129,7 @@ async function handler(
                   userId: email, // Use email as userId for login
                   username: tmkUser.name,
                   name: tmkUser.name,
-                  password: hashedPassword,
+                  password: tmkUser.password ?? hashedPassword,
                   role: "PR", // Default role
                   isActive: true,
                   sourceId: tmkUser.id,
