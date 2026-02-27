@@ -79,7 +79,15 @@ function AdminUsersContent() {
   // User Production state
   const [usersProduction, setUsersProduction] = useState<UserProduction[]>([]);
   const [loadingUsersProduction, setLoadingUsersProduction] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+
+  // TMK user assignment state
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [tmkUsers, setTmkUsers] = useState<Array<{ id: string; name: string; email: string; hasRole: boolean }>>([]);
+  const [loadingTmkUsers, setLoadingTmkUsers] = useState(false);
+  const [tmkSearch, setTmkSearch] = useState("");
+  const [selectedTmkUser, setSelectedTmkUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [assignRole, setAssignRole] = useState("PR");
+  const [assigning, setAssigning] = useState(false);
 
   // Roles state
   const [roles, setRoles] = useState<SystemRole[]>([]);
@@ -185,41 +193,86 @@ function AdminUsersContent() {
     }
   };
 
-  // Sync users from TMK_PDPJ01
-  const handleSyncProduction = async () => {
-    if (!confirm("ต้องการ Sync ข้อมูลผู้ใช้จาก TMK_PDPJ01 ใช่หรือไม่?")) {
-      return;
-    }
+  // Open TMK user assignment modal
+  const handleOpenAssignModal = async () => {
+    setIsAssignModalOpen(true);
+    setSelectedTmkUser(null);
+    setTmkSearch("");
+    // Use the last role (lowest priority) as default
+    const defaultRole = roles.length > 0 ? roles[roles.length - 1]?.code || "PR" : "PR";
+    setAssignRole(defaultRole);
 
     try {
-      setSyncing(true);
-      setError("");
+      setLoadingTmkUsers(true);
       const response = await authFetch("/api/admin/users-production", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "sync",
+          action: "fetch-tmk-users",
           userId: user?.id,
           userName: user?.name ?? user?.username,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json() as { tmkUsers?: Array<{ id: string; name: string; email: string; hasRole: boolean }> };
+      if (response.ok && data.tmkUsers) {
+        setTmkUsers(data.tmkUsers);
+      }
+    } catch (err) {
+      console.error("Fetch TMK users error:", err);
+      setError("ไม่สามารถดึงข้อมูลผู้ใช้จาก TMK ได้");
+    } finally {
+      setLoadingTmkUsers(false);
+    }
+  };
+
+  // Assign role to selected TMK user
+  const handleAssignRole = async () => {
+    if (!selectedTmkUser) return;
+
+    try {
+      setAssigning(true);
+      setError("");
+      const response = await authFetch("/api/admin/users-production", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assign-role",
+          userId: user?.id,
+          userName: user?.name ?? user?.username,
+          tmkUserId: selectedTmkUser.id,
+          tmkEmail: selectedTmkUser.email,
+          tmkName: selectedTmkUser.name,
+          role: assignRole,
+        }),
+      });
+
+      const data = await response.json() as { message?: string; error?: string };
 
       if (!response.ok) {
-        setError(data.error || "ไม่สามารถ Sync ข้อมูลได้");
+        setError(data.error || "ไม่สามารถกำหนดสิทธิ์ได้");
         return;
       }
 
       alert(data.message);
+      setIsAssignModalOpen(false);
       await loadUsersProduction();
     } catch (err) {
-      console.error("Sync error:", err);
-      setError("เกิดข้อผิดพลาดในการ Sync");
+      console.error("Assign role error:", err);
+      setError("เกิดข้อผิดพลาดในการกำหนดสิทธิ์");
     } finally {
-      setSyncing(false);
+      setAssigning(false);
     }
   };
+
+  // Filter TMK users by search
+  const filteredTmkUsers = useMemo(() => {
+    if (!tmkSearch.trim()) return tmkUsers;
+    const s = tmkSearch.toLowerCase();
+    return tmkUsers.filter(u =>
+      u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s)
+    );
+  }, [tmkUsers, tmkSearch]);
 
   useEffect(() => {
     void loadUsers();
@@ -425,7 +478,7 @@ function AdminUsersContent() {
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
               >
-                User Production (TMK)
+                TMK Role
                 <span className="ml-2 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
                   {usersProduction.length}
                 </span>
@@ -548,24 +601,19 @@ function AdminUsersContent() {
             </>
           )}
 
-          {/* User Production Tab */}
+          {/* TMK Role Tab */}
           {activeTab === "user_production" && (
             <>
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-sm text-gray-600">
-                  ข้อมูลผู้ใช้จาก TMK_PDPJ01 - ใช้ Email เป็น Login และ Password เริ่มต้นคือ 1234
+                  กำหนดสิทธิ์ให้ผู้ใช้จาก TMK — ใช้ Email login ผ่าน TMK_PDPJ01 / SSO
                 </p>
-                <CanAccess action="admin_users.sync" showDisabled disabledTooltip="คุณไม่มีสิทธิ์ Sync ผู้ใช้">
+                <CanAccess action="admin_users.create" showDisabled disabledTooltip="คุณไม่มีสิทธิ์เพิ่มผู้ใช้">
                   <button
-                    onClick={handleSyncProduction}
-                    disabled={syncing}
-                    className={`rounded-lg px-4 py-2 text-white ${
-                      syncing
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-orange-600 hover:bg-orange-700"
-                    }`}
+                    onClick={() => void handleOpenAssignModal()}
+                    className="rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
                   >
-                    {syncing ? "กำลัง Sync..." : "Sync จาก TMK_PDPJ01"}
+                    + เพิ่มสิทธิ์ผู้ใช้ TMK
                   </button>
                 </CanAccess>
               </div>
@@ -581,9 +629,6 @@ function AdminUsersContent() {
                         ชื่อ
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Password
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         สิทธิ์
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -595,9 +640,6 @@ function AdminUsersContent() {
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         Linked Req Name
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Last Sync
-                      </th>
                       <th className="sticky right-0 bg-gray-50 px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
                         จัดการ
                       </th>
@@ -606,14 +648,14 @@ function AdminUsersContent() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {loadingUsersProduction ? (
                       <tr>
-                        <td colSpan={9} className="px-6 py-4 text-center">
+                        <td colSpan={7} className="px-6 py-4 text-center">
                           กำลังโหลด...
                         </td>
                       </tr>
                     ) : usersProduction.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
-                          ไม่มีข้อมูลผู้ใช้ - กดปุ่ม &quot;Sync จาก TMK_PDPJ01&quot; เพื่อดึงข้อมูล
+                        <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                          ยังไม่มีผู้ใช้ TMK ที่ได้รับสิทธิ์ — กดปุ่ม &quot;+ เพิ่มสิทธิ์ผู้ใช้ TMK&quot; เพื่อเพิ่ม
                         </td>
                       </tr>
                     ) : (
@@ -624,9 +666,6 @@ function AdminUsersContent() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
                             {user.username || user.name || "-"}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
-                            {user.password ? "••••••" : "-"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
                             <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
@@ -645,11 +684,6 @@ function AdminUsersContent() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
                             {user.linked_req_name || "-"}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                            {user.lastSyncAt
-                              ? new Date(user.lastSyncAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
-                              : "-"}
                           </td>
                           <td className={`sticky right-0 whitespace-nowrap px-4 py-4 text-right text-sm font-medium shadow-[-2px_0_4px_rgba(0,0,0,0.05)] ${!user.isActive ? 'bg-gray-100' : 'bg-white'}`}>
                             <CanAccess action="admin_users.update" fallback={<span className="mr-3 text-gray-400 cursor-not-allowed" title="คุณไม่มีสิทธิ์แก้ไข">แก้ไข</span>}>
@@ -757,22 +791,25 @@ function AdminUsersContent() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Password {!editingUser && !editingUserProduction && <span className="text-red-500">*</span>}
-                  {(editingUser || editingUserProduction) && <span className="text-sm text-gray-500"> (เว้นว่างหากไม่ต้องการเปลี่ยน)</span>}
-                </label>
-                <input
-                  type="text"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                  required={!editingUser && !editingUserProduction}
-                  placeholder="รหัสผ่าน"
-                />
-              </div>
+              {/* Password — only for local User tab (TMK users auth via TMK directly) */}
+              {!editingUserProduction && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Password {!editingUser && <span className="text-red-500">*</span>}
+                    {editingUser && <span className="text-sm text-gray-500"> (เว้นว่างหากไม่ต้องการเปลี่ยน)</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    required={!editingUser}
+                    placeholder="รหัสผ่าน"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -973,6 +1010,118 @@ function AdminUsersContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* TMK User Assignment Modal */}
+      {isAssignModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold">
+              เพิ่มสิทธิ์ผู้ใช้ TMK
+            </h2>
+
+            {/* Search */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={tmkSearch}
+                onChange={(e) => setTmkSearch(e.target.value)}
+                placeholder="ค้นหาชื่อหรือ email..."
+                className="block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+
+            {/* User List */}
+            <div className="mb-4 max-h-60 overflow-auto rounded-md border border-gray-200">
+              {loadingTmkUsers ? (
+                <div className="px-4 py-8 text-center text-gray-500">
+                  กำลังโหลดผู้ใช้จาก TMK...
+                </div>
+              ) : filteredTmkUsers.length === 0 ? (
+                <div className="px-4 py-8 text-center text-gray-500">
+                  ไม่พบผู้ใช้
+                </div>
+              ) : (
+                filteredTmkUsers.map((u) => (
+                  <div
+                    key={u.id}
+                    onClick={() => !u.hasRole && setSelectedTmkUser(u)}
+                    className={`flex items-center justify-between px-4 py-2 border-b border-gray-100 ${
+                      u.hasRole
+                        ? "bg-gray-50 text-gray-400 cursor-not-allowed"
+                        : selectedTmkUser?.id === u.id
+                        ? "bg-indigo-50 cursor-pointer"
+                        : "hover:bg-gray-50 cursor-pointer"
+                    }`}
+                  >
+                    <div>
+                      <span className="font-medium">{u.name}</span>
+                      <span className="ml-2 text-sm text-gray-500">{u.email}</span>
+                    </div>
+                    {u.hasRole && (
+                      <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                        มีสิทธิ์แล้ว
+                      </span>
+                    )}
+                    {selectedTmkUser?.id === u.id && !u.hasRole && (
+                      <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
+                        เลือกแล้ว
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Role Selection */}
+            {selectedTmkUser && (
+              <div className="mb-4 rounded-md bg-indigo-50 p-3">
+                <p className="mb-2 text-sm font-medium text-indigo-800">
+                  กำหนดสิทธิ์ให้: <strong>{selectedTmkUser.name}</strong> ({selectedTmkUser.email})
+                </p>
+                <select
+                  value={assignRole}
+                  onChange={(e) => setAssignRole(e.target.value)}
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  {roles.length > 0 ? (
+                    roles.map((role) => (
+                      <option key={role.id} value={role.code}>
+                        {role.name} ({role.code})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Admin">Admin</option>
+                      <option value="PR">PR</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => void handleAssignRole()}
+                disabled={!selectedTmkUser || assigning}
+                className={`flex-1 rounded-lg px-4 py-2 text-white ${
+                  !selectedTmkUser || assigning
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-indigo-600 hover:bg-indigo-700"
+                }`}
+              >
+                {assigning ? "กำลังบันทึก..." : "กำหนดสิทธิ์"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAssignModalOpen(false)}
+                className="flex-1 rounded-lg bg-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-400"
+              >
+                ยกเลิก
+              </button>
+            </div>
           </div>
         </div>
       )}

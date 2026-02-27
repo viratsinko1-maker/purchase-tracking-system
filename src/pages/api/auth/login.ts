@@ -1,8 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
 import { getClientIp } from "~/server/utils/getClientIp";
-import bcrypt from "bcrypt";
 import { createAuditLog, AuditAction } from "~/server/api/utils/auditLog";
+import { authenticateWithTmk } from "~/lib/tmk-auth";
 
 export default async function handler(
   req: NextApiRequest,
@@ -36,33 +36,31 @@ export default async function handler(
 
     let userSource: "local" | "production" = "local";
 
-    // If not found in User table, try User_production table (bcrypt hashed password)
+    // If not found in User table, try TMK_PDPJ01 direct authentication
     if (!user) {
-      // Find user by email or userId in User_production
-      const userProduction = await db.user_production.findFirst({
-        where: {
-          OR: [
-            { email: username.toLowerCase() },
-            { userId: username.toLowerCase() },
-          ],
-        },
-      });
+      const tmkUser = await authenticateWithTmk(username, password);
 
-      if (userProduction && userProduction.password) {
-        // Compare bcrypt hashed password
-        const isPasswordValid = await bcrypt.compare(password, userProduction.password);
+      if (tmkUser) {
+        // Look up role mapping in user_production
+        const userProd = await db.user_production.findFirst({
+          where: {
+            OR: [
+              { email: tmkUser.email.toLowerCase() },
+              { id: tmkUser.id },
+            ],
+          },
+        });
 
-        if (isPasswordValid) {
-          // Map User_production to user format
+        if (userProd && userProd.isActive) {
           user = {
-            id: userProduction.id,
-            userId: userProduction.email, // Use email as userId
-            username: userProduction.username,
-            name: userProduction.name,
-            password: userProduction.password,
-            role: userProduction.role,
-            isActive: userProduction.isActive,
-            email: userProduction.email,
+            id: userProd.id,
+            userId: userProd.email,
+            username: userProd.username,
+            name: tmkUser.name, // Use fresh name from TMK
+            password: tmkUser.password,
+            role: userProd.role, // Use PR-PO role
+            isActive: userProd.isActive,
+            email: userProd.email,
             emailVerified: null,
             image: null,
           };

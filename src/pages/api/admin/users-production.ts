@@ -1,26 +1,8 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { db } from "~/server/db";
-import bcrypt from "bcrypt";
-import pg from "pg";
 import { createAuditLog, AuditAction, getIpFromRequest } from "~/server/api/utils/auditLog";
 import { withMethodPermissions } from "~/server/api/middleware/withPermission";
-
-const { Client } = pg;
-
-// Default password for new users (will be hashed)
-const DEFAULT_PASSWORD = "1234";
-const SALT_ROUNDS = 10;
-
-// TMK_PDPJ01 database connection
-function getTmkClient() {
-  return new Client({
-    host: "192.168.1.3",
-    port: 5432,
-    database: "TMK_PDPJ01",
-    user: "sa",
-    password: "@12345",
-  });
-}
+import { fetchAllTmkUsers } from "~/lib/tmk-auth";
 
 async function handler(
   req: NextApiRequest,
@@ -54,7 +36,7 @@ async function handler(
       return res.status(200).json({ users });
     }
 
-    // POST - Sync users from TMK_PDPJ01
+    // POST - Role management actions
     if (req.method === "POST") {
       const { action, userId: adminUserId, userName: adminUserName } = req.body as {
         action?: string;
@@ -62,129 +44,90 @@ async function handler(
         userName?: string;
       };
 
-      if (action === "sync") {
-        const tmkClient = getTmkClient();
-
+      // Fetch TMK users for role assignment dropdown
+      if (action === "fetch-tmk-users") {
         try {
-          await tmkClient.connect();
+          const tmkUsers = await fetchAllTmkUsers();
 
-          // Get all active users from TMK_PDPJ01 (only those with verified email)
-          const result = await tmkClient.query(`
-            SELECT id, name, email, password, "isActive"
-            FROM "User"
-            WHERE email IS NOT NULL
-              AND email != ''
-              AND "isActive" = true
-          `);
-
-          const tmkUsers = result.rows as Array<{
-            id: string;
-            name: string;
-            email: string;
-            password: string | null;
-            isActive: boolean;
-          }>;
-
-          await tmkClient.end();
-
-          // Get all emails from TMK for comparison
-          const tmkEmails = new Set(tmkUsers.map((u) => u.email.toLowerCase()));
-
-          // Hash default password once
-          const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, SALT_ROUNDS);
-
-          let inserted = 0;
-          let updated = 0;
-          let deactivated = 0;
-
-          // Upsert users from TMK_PDPJ01
-          for (const tmkUser of tmkUsers) {
-            const email = tmkUser.email.toLowerCase();
-
-            // Check if user already exists
-            const existingUser = await db.user_production.findUnique({
-              where: { email },
-            });
-
-            if (existingUser) {
-              // Update existing user (name/username + password from TMK)
-              await db.user_production.update({
-                where: { email },
-                data: {
-                  username: tmkUser.name,
-                  name: tmkUser.name,
-                  sourceId: tmkUser.id,
-                  isActive: true, // Re-activate if was deactivated
-                  lastSyncAt: new Date(),
-                  ...(tmkUser.password ? { password: tmkUser.password } : {}),
-                },
-              });
-              updated++;
-            } else {
-              // Create new user with password from TMK (fallback to default "1234")
-              await db.user_production.create({
-                data: {
-                  id: tmkUser.id, // Use TMK user ID as primary key
-                  email: email,
-                  userId: email, // Use email as userId for login
-                  username: tmkUser.name,
-                  name: tmkUser.name,
-                  password: tmkUser.password ?? hashedPassword,
-                  role: "PR", // Default role
-                  isActive: true,
-                  sourceId: tmkUser.id,
-                  lastSyncAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              });
-              inserted++;
-            }
-          }
-
-          // Deactivate users that no longer exist in TMK_PDPJ01
-          const allLocalUsers = await db.user_production.findMany({
-            where: { isActive: true, sourceId: { not: null } },
-          });
-
-          for (const localUser of allLocalUsers) {
-            if (!tmkEmails.has(localUser.email.toLowerCase())) {
-              await db.user_production.update({
-                where: { id: localUser.id },
-                data: { isActive: false },
-              });
-              deactivated++;
-            }
-          }
-
-          // Audit log: SYNC_DATA for user sync
-          createAuditLog(db, {
-            userId: adminUserId,
-            userName: adminUserName,
-            action: "SYNC_DATA",
-            tableName: "user_production",
-            description: `Sync ผู้ใช้จาก TMK: เพิ่มใหม่ ${inserted}, อัพเดต ${updated}, ปิดใช้งาน ${deactivated}`,
-            metadata: {
-              inserted,
-              updated,
-              deactivated,
-              totalFromTMK: tmkUsers.length,
-            },
-            ipAddress: getIpFromRequest(req),
-          }).catch(console.error);
+          // Get existing user_production emails to mark who already has a role
+          const existingEmails = new Set(
+            (await db.user_production.findMany({
+              select: { email: true },
+            })).map((u) => u.email.toLowerCase())
+          );
 
           return res.status(200).json({
-            success: true,
-            message: `Sync สำเร็จ: เพิ่มใหม่ ${inserted}, อัพเดต ${updated}, ปิดใช้งาน ${deactivated}`,
-            stats: { inserted, updated, deactivated },
+            tmkUsers: tmkUsers.map((u) => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              hasRole: existingEmails.has(u.email.toLowerCase()),
+            })),
           });
-
         } catch (dbError) {
           console.error("TMK_PDPJ01 connection error:", dbError);
           return res.status(500).json({
             error: "ไม่สามารถเชื่อมต่อ TMK_PDPJ01 ได้",
-            details: dbError instanceof Error ? dbError.message : "Unknown error"
+            details: dbError instanceof Error ? dbError.message : "Unknown error",
           });
         }
+      }
+
+      // Assign PR-PO role to a TMK user
+      if (action === "assign-role") {
+        const { tmkUserId, tmkEmail, tmkName, role: assignedRole } = req.body as {
+          tmkUserId: string;
+          tmkEmail: string;
+          tmkName: string;
+          role: string;
+        };
+
+        if (!tmkUserId || !tmkEmail || !assignedRole) {
+          return res.status(400).json({ error: "ข้อมูลไม่ครบถ้วน" });
+        }
+
+        const email = tmkEmail.toLowerCase();
+        const existing = await db.user_production.findUnique({ where: { email } });
+
+        if (existing) {
+          // Update role if already exists
+          await db.user_production.update({
+            where: { email },
+            data: { role: assignedRole, isActive: true, name: tmkName, username: tmkName },
+          });
+        } else {
+          await db.user_production.create({
+            data: {
+              id: tmkUserId,
+              email,
+              userId: email,
+              username: tmkName,
+              name: tmkName,
+              password: null, // No password needed — auth goes through TMK
+              role: assignedRole,
+              isActive: true,
+              sourceId: tmkUserId,
+              updatedAt: new Date(),
+            },
+          });
+        }
+
+        // Audit log
+        createAuditLog(db, {
+          userId: adminUserId,
+          userName: adminUserName,
+          action: AuditAction.CREATE,
+          tableName: "user_production",
+          recordId: tmkUserId,
+          description: `กำหนดสิทธิ์ TMK user: ${tmkName} (${email}) → role: ${assignedRole}`,
+          metadata: { tmkUserId, tmkEmail: email, role: assignedRole },
+          ipAddress: getIpFromRequest(req),
+        }).catch(console.error);
+
+        return res.status(200).json({
+          success: true,
+          message: `กำหนดสิทธิ์ ${tmkName} เป็น ${assignedRole} สำเร็จ`,
+        });
       }
 
       return res.status(400).json({ error: "Invalid action" });
@@ -192,11 +135,10 @@ async function handler(
 
     // PUT - Update user
     if (req.method === "PUT") {
-      const { id, username, name, password, role, isActive, telegramChatId, linkedReqName } = req.body as {
+      const { id, username, name, role, isActive, telegramChatId, linkedReqName } = req.body as {
         id: string;
         username?: string;
         name?: string;
-        password?: string;
         role?: string;
         isActive?: boolean;
         telegramChatId?: string;
@@ -207,11 +149,10 @@ async function handler(
         return res.status(400).json({ error: "ไม่พบ User ID" });
       }
 
-      // Build update data
+      // Build update data (password removed — auth goes through TMK directly)
       const updateData: {
         username?: string;
         name?: string;
-        password?: string;
         role?: string;
         isActive?: boolean;
         telegramChatId?: string | null;
@@ -224,11 +165,6 @@ async function handler(
       if (isActive !== undefined) updateData.isActive = isActive;
       if (telegramChatId !== undefined) updateData.telegramChatId = telegramChatId || null;
       if (linkedReqName !== undefined) updateData.linked_req_name = linkedReqName || null;
-
-      // Hash password if provided
-      if (password && password.trim() !== "") {
-        updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
-      }
 
       // Get old values for audit log
       const oldUser = await db.user_production.findUnique({ where: { id } });
@@ -258,7 +194,6 @@ async function handler(
           isActive: updatedUser.isActive,
           telegramChatId: updatedUser.telegramChatId,
           linked_req_name: updatedUser.linked_req_name,
-          passwordChanged: !!(password && password.trim() !== ""),
         },
         description: `แก้ไขผู้ใช้ Production: ${updatedUser.name || updatedUser.email}`,
         ipAddress: getIpFromRequest(req),
@@ -315,7 +250,7 @@ async function handler(
 // Apply permission middleware - protect admin user production management
 export default withMethodPermissions(handler, {
   GET: { tableName: 'admin_users', action: 'read' },
-  POST: { tableName: 'admin_users', action: 'sync' },  // Sync action
+  POST: { tableName: 'admin_users', action: 'create' },  // Assign role / Fetch TMK users
   PUT: { tableName: 'admin_users', action: 'update' },
   DELETE: { tableName: 'admin_users', action: 'delete' },
 });

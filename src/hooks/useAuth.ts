@@ -10,7 +10,7 @@ export interface User {
   name: string | null;
   role: string | null;
   isActive: boolean;
-  source?: "local" | "production";
+  source?: "local" | "production" | "sso";
 }
 
 export function useAuth() {

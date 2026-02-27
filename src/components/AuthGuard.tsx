@@ -15,7 +15,7 @@ interface AuthGuardProps {
 }
 
 // Pages that don't require authentication
-const publicPages = ["/login", "/forgot-password", "/reset-password"];
+const publicPages = ["/login", "/forgot-password", "/reset-password", "/auth/sso"];
 
 // Pages that should not have layout (TopBar + Sidebar)
 const noLayoutPages = ["/print/pr/[prNo]"];
