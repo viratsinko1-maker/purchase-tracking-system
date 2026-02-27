@@ -296,9 +296,8 @@ export default function PRDocumentReceiptModal({
 
                         {/* รายชื่อผู้อนุมัติ พร้อมปุ่มอนุมัติข้างๆ ชื่อตัวเอง */}
                         {(() => {
-                          const lineApprovers = existingReceipt?.line_approvers
-                            ? (existingReceipt.line_approvers as Array<{userId: string; username: string; email?: string; priority: number}>)
-                            : approversPreview?.lineApprovers || [];
+                          const lineApprovers = approversPreview?.lineApprovers
+                            ?? (existingReceipt?.line_approvers as Array<{userId: string; username: string; email?: string; priority: number}> || []);
 
                           const stepCheck = canApproveStep('line');
 
@@ -379,9 +378,8 @@ export default function PRDocumentReceiptModal({
 
                         {/* รายชื่อผู้อนุมัติ พร้อมปุ่มอนุมัติข้างๆ ชื่อตัวเอง */}
                         {(() => {
-                          const costCenterApprovers = existingReceipt?.cost_center_approvers
-                            ? (existingReceipt.cost_center_approvers as Array<{userId: string; username: string; email?: string; priority: number}>)
-                            : approversPreview?.costCenterApprovers || [];
+                          const costCenterApprovers = approversPreview?.costCenterApprovers
+                            ?? (existingReceipt?.cost_center_approvers as Array<{userId: string; username: string; email?: string; priority: number}> || []);
 
                           const stepCheck = canApproveStep('cost_center');
 

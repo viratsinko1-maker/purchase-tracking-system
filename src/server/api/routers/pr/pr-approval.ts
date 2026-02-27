@@ -166,15 +166,37 @@ export const prApprovalRouter = createTRPCRouter({
         }`);
       }
 
-      // สำหรับ line และ cost_center ต้องเช็ค ocr_approver list ด้วย
+      // สำหรับ line และ cost_center ต้องเช็คจาก ocr_approver table ตรงๆ (live data)
       if (input.approvalType === 'line' || input.approvalType === 'cost_center') {
-        const approverList = input.approvalType === 'line'
-          ? (receipt.line_approvers as { userId: string; username: string }[] || [])
-          : (receipt.cost_center_approvers as { userId: string; username: string }[] || []);
+        let isInApproverList = false;
 
-        const isInApproverList = approverList.some(
-          approver => approver.username === input.approverName || approver.userId === input.approverUserId
-        );
+        if (receipt.ocr_code2) {
+          const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
+            where: { name: receipt.ocr_code2 },
+          });
+
+          if (ocrCode) {
+            const liveApprovers = await ctx.db.ocr_approver.findMany({
+              where: { ocrCodeId: ocrCode.id, approverType: input.approvalType === 'line' ? 'line' : 'cost_center' },
+            });
+
+            isInApproverList = liveApprovers.some(
+              approver => approver.userProductionId === input.approverUserId
+            );
+
+            // ถ้าเจอ ให้ fallback เช็ค username ด้วย
+            if (!isInApproverList) {
+              const approverUserIds = liveApprovers.map(a => a.userProductionId);
+              const approverUsers = await ctx.db.user_production.findMany({
+                where: { id: { in: approverUserIds } },
+                select: { id: true, username: true, name: true },
+              });
+              isInApproverList = approverUsers.some(
+                u => u.username === input.approverName || u.name === input.approverName
+              );
+            }
+          }
+        }
 
         if (!isInApproverList) {
           throw new Error(`คุณไม่ได้อยู่ในรายชื่อผู้อนุมัติ${input.approvalType === 'line' ? 'ตามสายงาน' : 'ตาม Cost Center'}ของ PR นี้`);
@@ -429,6 +451,48 @@ export const prApprovalRouter = createTRPCRouter({
         combinedClearData = { ...combinedClearData, ...stageData };
       }
 
+      // Refresh approver snapshot จาก ocr_approver ปัจจุบัน
+      if (receipt.ocr_code2) {
+        const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
+          where: { name: receipt.ocr_code2 },
+        });
+
+        if (ocrCode) {
+          const approvers = await ctx.db.ocr_approver.findMany({
+            where: { ocrCodeId: ocrCode.id },
+            orderBy: [{ approverType: 'asc' }, { priority: 'asc' }],
+          });
+
+          const userIds = approvers.map(a => a.userProductionId);
+          const users = await ctx.db.user_production.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true, username: true, name: true },
+          });
+
+          const newLineApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+          const newCostCenterApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+
+          for (const approver of approvers) {
+            const user = users.find(u => u.id === approver.userProductionId);
+            const approverData = {
+              userId: approver.userProductionId,
+              username: user?.username || user?.name || user?.email || 'Unknown',
+              email: user?.email || undefined,
+              priority: approver.priority,
+            };
+
+            if (approver.approverType === 'line') {
+              newLineApprovers.push(approverData);
+            } else if (approver.approverType === 'cost_center') {
+              newCostCenterApprovers.push(approverData);
+            }
+          }
+
+          combinedClearData.line_approvers = newLineApprovers.length > 0 ? newLineApprovers : Prisma.JsonNull;
+          combinedClearData.cost_center_approvers = newCostCenterApprovers.length > 0 ? newCostCenterApprovers : Prisma.JsonNull;
+        }
+      }
+
       const updated = await ctx.db.pr_document_receipt.update({
         where: { pr_doc_num: input.prNo },
         data: combinedClearData,
@@ -498,14 +562,34 @@ export const prApprovalRouter = createTRPCRouter({
       const hasManagerPermission = permissionChecks[2]!.allowed;
       const hasFinalPermission = permissionChecks[3]!.allowed;
 
+      // ดึง ocr_approver ของ user ปัจจุบัน (live data) เพื่อสร้าง lookup set
+      const myOcrApprovers = await ctx.db.ocr_approver.findMany({
+        where: { userProductionId: input.userId },
+        select: { ocrCodeId: true, approverType: true },
+      });
+
+      const myLineOcrCodeIds = new Set(myOcrApprovers.filter(a => a.approverType === 'line').map(a => a.ocrCodeId));
+      const myCcOcrCodeIds = new Set(myOcrApprovers.filter(a => a.approverType === 'cost_center').map(a => a.ocrCodeId));
+
+      // Map ocr_code2 name → ocrCodeId
+      const allOcrCodeIds = new Set([...myLineOcrCodeIds, ...myCcOcrCodeIds]);
+      const ocrCodes = allOcrCodeIds.size > 0
+        ? await ctx.db.ocr_code_and_name.findMany({
+            where: { id: { in: [...allOcrCodeIds] } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const ocrIdToName = new Map(ocrCodes.map(o => [o.id, o.name]));
+      const myLineOcrNames = new Set([...myLineOcrCodeIds].map(id => ocrIdToName.get(id)).filter(Boolean));
+      const myCcOcrNames = new Set([...myCcOcrCodeIds].map(id => ocrIdToName.get(id)).filter(Boolean));
+
       const allReceipts = await ctx.db.pr_document_receipt.findMany({
         select: {
           pr_doc_num: true,
+          ocr_code2: true,
           requester_approval_at: true,
           line_approval_at: true,
-          line_approvers: true,
           cost_center_approval_at: true,
-          cost_center_approvers: true,
           procurement_approval_at: true,
           vpc_approval_at: true,
         },
@@ -514,23 +598,14 @@ export const prApprovalRouter = createTRPCRouter({
       let count = 0;
 
       for (const receipt of allReceipts) {
-        const lineApprovers = receipt.line_approvers as Array<{userId: string; username: string}> || [];
-        const ccApprovers = receipt.cost_center_approvers as Array<{userId: string; username: string}> || [];
-
-        // ขั้น 2: ต้องมี permission + อยู่ใน approver list
+        // ขั้น 2: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.requester_approval_at && !receipt.line_approval_at) {
-          const isLineApprover = lineApprovers.some(
-            a => a.userId === input.userId || a.username === input.userName
-          );
-          if (hasLinePermission && isLineApprover) { count++; continue; }
+          if (hasLinePermission && receipt.ocr_code2 && myLineOcrNames.has(receipt.ocr_code2)) { count++; continue; }
         }
 
-        // ขั้น 3: ต้องมี permission + อยู่ใน approver list
+        // ขั้น 3: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.line_approval_at && !receipt.cost_center_approval_at) {
-          const isCCApprover = ccApprovers.some(
-            a => a.userId === input.userId || a.username === input.userName
-          );
-          if (hasCostCenterPermission && isCCApprover) { count++; continue; }
+          if (hasCostCenterPermission && receipt.ocr_code2 && myCcOcrNames.has(receipt.ocr_code2)) { count++; continue; }
         }
 
         // ขั้น 4: ต้องมี permission (ไม่ต้องเช็ค role แล้ว)
@@ -568,14 +643,33 @@ export const prApprovalRouter = createTRPCRouter({
       const hasManagerPermission = permissionChecks[2]!.allowed;
       const hasFinalPermission = permissionChecks[3]!.allowed;
 
+      // ดึง ocr_approver ของ user ปัจจุบัน (live data)
+      const myOcrApprovers = await ctx.db.ocr_approver.findMany({
+        where: { userProductionId: input.userId },
+        select: { ocrCodeId: true, approverType: true },
+      });
+
+      const myLineOcrCodeIds = new Set(myOcrApprovers.filter(a => a.approverType === 'line').map(a => a.ocrCodeId));
+      const myCcOcrCodeIds = new Set(myOcrApprovers.filter(a => a.approverType === 'cost_center').map(a => a.ocrCodeId));
+
+      const allOcrCodeIds = new Set([...myLineOcrCodeIds, ...myCcOcrCodeIds]);
+      const ocrCodes = allOcrCodeIds.size > 0
+        ? await ctx.db.ocr_code_and_name.findMany({
+            where: { id: { in: [...allOcrCodeIds] } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const ocrIdToName = new Map(ocrCodes.map(o => [o.id, o.name]));
+      const myLineOcrNames = new Set([...myLineOcrCodeIds].map(id => ocrIdToName.get(id)).filter(Boolean));
+      const myCcOcrNames = new Set([...myCcOcrCodeIds].map(id => ocrIdToName.get(id)).filter(Boolean));
+
       const allReceipts = await ctx.db.pr_document_receipt.findMany({
         select: {
           pr_doc_num: true,
+          ocr_code2: true,
           requester_approval_at: true,
           line_approval_at: true,
-          line_approvers: true,
           cost_center_approval_at: true,
-          cost_center_approvers: true,
           procurement_approval_at: true,
           vpc_approval_at: true,
           created_at: true,
@@ -590,17 +684,11 @@ export const prApprovalRouter = createTRPCRouter({
       }> = [];
 
       for (const receipt of allReceipts) {
-        const lineApprovers = receipt.line_approvers as Array<{userId: string; username: string}> || [];
-        const ccApprovers = receipt.cost_center_approvers as Array<{userId: string; username: string}> || [];
-
         if (!receipt.requester_approval_at) continue;
 
-        // ขั้น 2: ต้องมี permission + อยู่ใน approver list
+        // ขั้น 2: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.requester_approval_at && !receipt.line_approval_at) {
-          const isLineApprover = lineApprovers.some(
-            a => a.userId === input.userId || a.username === input.userName
-          );
-          if (hasLinePermission && isLineApprover) {
+          if (hasLinePermission && receipt.ocr_code2 && myLineOcrNames.has(receipt.ocr_code2)) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'line',
@@ -611,12 +699,9 @@ export const prApprovalRouter = createTRPCRouter({
           }
         }
 
-        // ขั้น 3: ต้องมี permission + อยู่ใน approver list
+        // ขั้น 3: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.line_approval_at && !receipt.cost_center_approval_at) {
-          const isCCApprover = ccApprovers.some(
-            a => a.userId === input.userId || a.username === input.userName
-          );
-          if (hasCostCenterPermission && isCCApprover) {
+          if (hasCostCenterPermission && receipt.ocr_code2 && myCcOcrNames.has(receipt.ocr_code2)) {
             pendingApprovals.push({
               prNo: receipt.pr_doc_num,
               stage: 'cost_center',
