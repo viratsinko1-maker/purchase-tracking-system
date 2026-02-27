@@ -230,8 +230,8 @@ async function handler(
 }
 
 // Apply permission middleware - protect admin workflow/OCR codes management
+// GET ไม่ต้อง check permission — ทุก role ต้องใช้ชื่อแผนกในหน้า pr-tracking
 export default withMethodPermissions(handler, {
-  GET: { tableName: 'admin_workflow', action: 'read' },
   POST: { tableName: 'admin_workflow', action: 'sync' },
   PUT: { tableName: 'admin_workflow', action: 'update' },
 });
