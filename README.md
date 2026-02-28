@@ -152,10 +152,10 @@ AUTH_DISCORD_SECRET="dummy"
 DATABASE_URL="postgresql://postgres:1234@localhost:5432/PR_PO"
 
 # SQL Server (SAP B1 - แหล่งข้อมูล)
-MSSQL_SERVER="SAPSERVERTMK"
-MSSQL_DATABASE="TMK_PRD"
+MSSQL_SERVER="xxxxxxxxxxxxxxxxxx"
+MSSQL_DATABASE="xxxxxxxxxxxxxxxx"
 MSSQL_USER="powerquery_hq"
-MSSQL_PASSWORD="@Tmk963*"
+MSSQL_PASSWORD="xxxxxxxxxxxxxxxxxxxxxxx*"
 MSSQL_PORT=1433
 MSSQL_TRUST_SERVER_CERTIFICATE=true
 ```
@@ -484,7 +484,7 @@ pr_master (1) ──────< (N) pr_lines
 
 - ✅ SQL Server (SAP B1) เป็น **read-only** - แก้ไขข้อมูลใน SAP เท่านั้น
 - ✅ PostgreSQL เป็น **read-only copy** สำหรับแสดงผลและรายงาน
-- ✅ Network share auto-mount: `\\10.1.1.199\b1_shr` (สำหรับไฟล์แนบ)
+- ✅ Network share auto-mount: `\\xxxxxxxxxxxxxxxxxxxxxxxxxxx\b1_shr` (สำหรับไฟล์แนบ)
 - ✅ ไม่มีการแก้ไขข้อมูลผ่านเว็บ - เป็น **view-only system**
 - ✅ Source of truth คือ **SAP B1 เท่านั้น**
 
@@ -741,7 +741,7 @@ npm install --production
 # 3. ตั้งค่า .env (production)
 NEXTAUTH_URL="http://dev.tmkpalmoil.com:2025"
 AUTH_URL="http://dev.tmkpalmoil.com:2025"
-DATABASE_URL="postgresql://sa:password@192.168.1.3:5432/PR_PO"
+DATABASE_URL="postgresql://xxxxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxx@192.168.1.3:5432/PR_PO"
 
 # 4. Build
 npm run build
@@ -814,7 +814,7 @@ node install-service.js
 NODE_ENV="production"
 
 # Next Auth (⚠️ เปลี่ยน URL ให้ตรงกับ production!)
-AUTH_SECRET="M1Cn+nJRYvMli5WpIwY4N26G6nV97HG+B/u4E8+Nrk0="
+AUTH_SECRET="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 NEXTAUTH_URL="http://dev.tmkpalmoil.com:2025"
 AUTH_URL="http://dev.tmkpalmoil.com:2025"
 AUTH_TRUST_HOST="true"
@@ -824,20 +824,20 @@ AUTH_DISCORD_ID="dummy"
 AUTH_DISCORD_SECRET="dummy"
 
 # Database (⚠️ ใช้ IP แทน hostname ใน production!)
-DATABASE_URL="postgresql://sa:@12345@192.168.1.3:5432/PR_PO"
+DATABASE_URL="postgresql://xxxxxxxxxxxx:xxxxxxxx@192.168.1.3:5432/PR_PO"
 
 # SQL Server (SAP B1)
-MSSQL_SERVER="SAPSERVERTMK"
-MSSQL_DATABASE="TMK_PRD"
-MSSQL_USER="powerquery_hq"
-MSSQL_PASSWORD="@Tmk963*"
+MSSQL_SERVER="xxxxxxxxx"
+MSSQL_DATABASE="xxxxxxxx"
+MSSQL_USER="xxxxxxxxxxx"
+MSSQL_PASSWORD="xxxxxxxxxx*"
 MSSQL_PORT=1433
 MSSQL_TRUST_SERVER_CERTIFICATE=true
 
 # Network Share
 NETWORK_SHARE_PATH="\\\\10.1.1.199\\b1_shr"
-NETWORK_SHARE_USER="B1admin"
-NETWORK_SHARE_PASSWORD="On33rp"
+NETWORK_SHARE_USER="xxxxxxxxx"
+NETWORK_SHARE_PASSWORD="xxxxxxxx"
 ```
 
 **⚠️ สำคัญ:**
