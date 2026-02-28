@@ -46,9 +46,10 @@ interface DocumentReceipt {
 interface PRPrintViewProps {
   prData: PRData;
   documentReceipt: DocumentReceipt | null;
+  printedBy?: string;
 }
 
-export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProps) {
+export default function PRPrintView({ prData, documentReceipt, printedBy }: PRPrintViewProps) {
   // Format date to dd.mm.yyyy
   const formatDate = (date: Date | string | null) => {
     if (!date) return "-";
@@ -145,6 +146,7 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
           {/* Right side - Print datetime and page number */}
           <div className="text-right text-[8px] flex-shrink-0">
             <p>พิมพ์: {printDateTime}</p>
+            {printedBy && <p>Print by: {printedBy}</p>}
             {totalPages > 1 && <p>หน้า {pageNum}/{totalPages}</p>}
           </div>
         </div>
@@ -325,9 +327,6 @@ export default function PRPrintView({ prData, documentReceipt }: PRPrintViewProp
             key={pageIndex}
             className={`pr-print-page ${!isLastPage ? 'page-break-after' : ''}`}
           >
-            {/* Watermark */}
-            <div className="pr-print-watermark"></div>
-
             {/* Header */}
             <PageHeader pageNum={pageIndex + 1} totalPages={totalPages} />
 

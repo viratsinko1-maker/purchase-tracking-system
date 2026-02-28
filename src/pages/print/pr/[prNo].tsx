@@ -5,10 +5,12 @@
 import { useRouter } from "next/router";
 import Head from "next/head";
 import { api } from "~/utils/api";
+import { useAuth } from "~/hooks/useAuth";
 import PRPrintView from "~/components/PRPrintView";
 
 export default function PRPrintPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { prNo } = router.query;
   const prNoNum = prNo ? parseInt(prNo as string, 10) : 0;
 
@@ -144,6 +146,7 @@ export default function PRPrintPage() {
         <PRPrintView
           prData={prDataForPrint}
           documentReceipt={receiptForPrint}
+          printedBy={user?.name || user?.username || undefined}
         />
       </div>
     </>
