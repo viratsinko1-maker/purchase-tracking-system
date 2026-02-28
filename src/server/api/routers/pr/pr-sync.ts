@@ -440,7 +440,7 @@ export const prSyncRouter = createTRPCRouter({
                     vpc_approval_by, vpc_approval_by_user_id, vpc_approval_at,
                     created_at, updated_at
                   )
-                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
                   ON CONFLICT (pr_doc_num) DO UPDATE SET
                     receipt_date = EXCLUDED.receipt_date,
                     receipt_datetime = EXCLUDED.receipt_datetime,
