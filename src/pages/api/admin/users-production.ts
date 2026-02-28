@@ -73,6 +73,66 @@ async function handler(
         }
       }
 
+      // Batch assign PR-PO role to multiple TMK users
+      if (action === "batch-assign-role") {
+        const { users: tmkUsersList, role: assignedRole } = req.body as {
+          users: Array<{ tmkUserId: string; tmkEmail: string; tmkName: string }>;
+          role: string;
+        };
+
+        if (!tmkUsersList || tmkUsersList.length === 0 || !assignedRole) {
+          return res.status(400).json({ error: "ข้อมูลไม่ครบถ้วน" });
+        }
+
+        let created = 0;
+        let updated = 0;
+
+        for (const tmkUser of tmkUsersList) {
+          const email = tmkUser.tmkEmail.toLowerCase();
+          const existing = await db.user_production.findUnique({ where: { email } });
+
+          if (existing) {
+            await db.user_production.update({
+              where: { email },
+              data: { role: assignedRole, isActive: true, name: tmkUser.tmkName, username: tmkUser.tmkName },
+            });
+            updated++;
+          } else {
+            await db.user_production.create({
+              data: {
+                id: tmkUser.tmkUserId,
+                email,
+                userId: email,
+                username: tmkUser.tmkName,
+                name: tmkUser.tmkName,
+                password: null,
+                role: assignedRole,
+                isActive: true,
+                sourceId: tmkUser.tmkUserId,
+                updatedAt: new Date(),
+              },
+            });
+            created++;
+          }
+
+          createAuditLog(db, {
+            userId: adminUserId,
+            userName: adminUserName,
+            action: AuditAction.CREATE,
+            tableName: "user_production",
+            recordId: tmkUser.tmkUserId,
+            description: `กำหนดสิทธิ์ TMK user: ${tmkUser.tmkName} (${email}) → role: ${assignedRole}`,
+            metadata: { tmkUserId: tmkUser.tmkUserId, tmkEmail: email, role: assignedRole },
+            ipAddress: getIpFromRequest(req),
+          }).catch(console.error);
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: `กำหนดสิทธิ์ ${assignedRole} สำเร็จ ${created + updated} คน (ใหม่ ${created}, อัพเดต ${updated})`,
+        });
+      }
+
       // Assign PR-PO role to a TMK user
       if (action === "assign-role") {
         const { tmkUserId, tmkEmail, tmkName, role: assignedRole } = req.body as {

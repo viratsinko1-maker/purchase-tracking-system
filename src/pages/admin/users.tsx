@@ -85,7 +85,7 @@ function AdminUsersContent() {
   const [tmkUsers, setTmkUsers] = useState<Array<{ id: string; name: string; email: string; hasRole: boolean }>>([]);
   const [loadingTmkUsers, setLoadingTmkUsers] = useState(false);
   const [tmkSearch, setTmkSearch] = useState("");
-  const [selectedTmkUser, setSelectedTmkUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [selectedTmkUsers, setSelectedTmkUsers] = useState<Map<string, { id: string; name: string; email: string }>>(new Map());
   const [assignRole, setAssignRole] = useState("PR");
   const [assigning, setAssigning] = useState(false);
 
@@ -196,7 +196,7 @@ function AdminUsersContent() {
   // Open TMK user assignment modal
   const handleOpenAssignModal = async () => {
     setIsAssignModalOpen(true);
-    setSelectedTmkUser(null);
+    setSelectedTmkUsers(new Map());
     setTmkSearch("");
     // Use the last role (lowest priority) as default
     const defaultRole = roles.length > 0 ? roles[roles.length - 1]?.code || "PR" : "PR";
@@ -226,23 +226,28 @@ function AdminUsersContent() {
     }
   };
 
-  // Assign role to selected TMK user
+  // Assign role to selected TMK users (batch)
   const handleAssignRole = async () => {
-    if (!selectedTmkUser) return;
+    if (selectedTmkUsers.size === 0) return;
 
     try {
       setAssigning(true);
       setError("");
+
+      const tmkUsersList = Array.from(selectedTmkUsers.values()).map(u => ({
+        tmkUserId: u.id,
+        tmkEmail: u.email,
+        tmkName: u.name,
+      }));
+
       const response = await authFetch("/api/admin/users-production", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "assign-role",
+          action: "batch-assign-role",
           userId: user?.id,
           userName: user?.name ?? user?.username,
-          tmkUserId: selectedTmkUser.id,
-          tmkEmail: selectedTmkUser.email,
-          tmkName: selectedTmkUser.name,
+          users: tmkUsersList,
           role: assignRole,
         }),
       });
@@ -265,11 +270,12 @@ function AdminUsersContent() {
     }
   };
 
-  // Filter TMK users by search
+  // Filter TMK users: hide users who already have roles, then apply search
   const filteredTmkUsers = useMemo(() => {
-    if (!tmkSearch.trim()) return tmkUsers;
+    const available = tmkUsers.filter(u => !u.hasRole);
+    if (!tmkSearch.trim()) return available;
     const s = tmkSearch.toLowerCase();
-    return tmkUsers.filter(u =>
+    return available.filter(u =>
       u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s)
     );
   }, [tmkUsers, tmkSearch]);
@@ -1021,16 +1027,45 @@ function AdminUsersContent() {
               เพิ่มสิทธิ์ผู้ใช้ TMK
             </h2>
 
-            {/* Search */}
-            <div className="mb-4">
+            {/* Search + Pick All */}
+            <div className="mb-3 flex gap-2">
               <input
                 type="text"
                 value={tmkSearch}
                 onChange={(e) => setTmkSearch(e.target.value)}
                 placeholder="ค้นหาชื่อหรือ email..."
-                className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                className="block flex-1 rounded-md border border-gray-300 px-3 py-2"
               />
+              {!loadingTmkUsers && filteredTmkUsers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allSelected = filteredTmkUsers.every(u => selectedTmkUsers.has(u.id));
+                    if (allSelected) {
+                      // Deselect all filtered
+                      const next = new Map(selectedTmkUsers);
+                      filteredTmkUsers.forEach(u => next.delete(u.id));
+                      setSelectedTmkUsers(next);
+                    } else {
+                      // Select all filtered
+                      const next = new Map(selectedTmkUsers);
+                      filteredTmkUsers.forEach(u => next.set(u.id, { id: u.id, name: u.name, email: u.email }));
+                      setSelectedTmkUsers(next);
+                    }
+                  }}
+                  className="whitespace-nowrap rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                >
+                  {filteredTmkUsers.every(u => selectedTmkUsers.has(u.id)) ? "ยกเลิกทั้งหมด" : "เลือกทั้งหมด"}
+                </button>
+              )}
             </div>
+
+            {/* Selected count */}
+            {selectedTmkUsers.size > 0 && (
+              <div className="mb-2 text-sm text-indigo-600">
+                เลือกแล้ว {selectedTmkUsers.size} คน
+              </div>
+            )}
 
             {/* User List */}
             <div className="mb-4 max-h-60 overflow-auto rounded-md border border-gray-200">
@@ -1040,45 +1075,48 @@ function AdminUsersContent() {
                 </div>
               ) : filteredTmkUsers.length === 0 ? (
                 <div className="px-4 py-8 text-center text-gray-500">
-                  ไม่พบผู้ใช้
+                  ไม่พบผู้ใช้ที่ยังไม่มีสิทธิ์
                 </div>
               ) : (
-                filteredTmkUsers.map((u) => (
-                  <div
-                    key={u.id}
-                    onClick={() => !u.hasRole && setSelectedTmkUser(u)}
-                    className={`flex items-center justify-between px-4 py-2 border-b border-gray-100 ${
-                      u.hasRole
-                        ? "bg-gray-50 text-gray-400 cursor-not-allowed"
-                        : selectedTmkUser?.id === u.id
-                        ? "bg-indigo-50 cursor-pointer"
-                        : "hover:bg-gray-50 cursor-pointer"
-                    }`}
-                  >
-                    <div>
-                      <span className="font-medium">{u.name}</span>
-                      <span className="ml-2 text-sm text-gray-500">{u.email}</span>
+                filteredTmkUsers.map((u) => {
+                  const isSelected = selectedTmkUsers.has(u.id);
+                  return (
+                    <div
+                      key={u.id}
+                      onClick={() => {
+                        const next = new Map(selectedTmkUsers);
+                        if (isSelected) {
+                          next.delete(u.id);
+                        } else {
+                          next.set(u.id, { id: u.id, name: u.name, email: u.email });
+                        }
+                        setSelectedTmkUsers(next);
+                      }}
+                      className={`flex items-center gap-3 px-4 py-2 border-b border-gray-100 cursor-pointer ${
+                        isSelected ? "bg-indigo-50" : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium">{u.name}</span>
+                        <span className="ml-2 text-sm text-gray-500">{u.email}</span>
+                      </div>
                     </div>
-                    {u.hasRole && (
-                      <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                        มีสิทธิ์แล้ว
-                      </span>
-                    )}
-                    {selectedTmkUser?.id === u.id && !u.hasRole && (
-                      <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
-                        เลือกแล้ว
-                      </span>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
             {/* Role Selection */}
-            {selectedTmkUser && (
+            {selectedTmkUsers.size > 0 && (
               <div className="mb-4 rounded-md bg-indigo-50 p-3">
                 <p className="mb-2 text-sm font-medium text-indigo-800">
-                  กำหนดสิทธิ์ให้: <strong>{selectedTmkUser.name}</strong> ({selectedTmkUser.email})
+                  กำหนดสิทธิ์ให้ {selectedTmkUsers.size} คน
                 </p>
                 <select
                   value={assignRole}
@@ -1105,14 +1143,14 @@ function AdminUsersContent() {
             <div className="flex gap-3">
               <button
                 onClick={() => void handleAssignRole()}
-                disabled={!selectedTmkUser || assigning}
+                disabled={selectedTmkUsers.size === 0 || assigning}
                 className={`flex-1 rounded-lg px-4 py-2 text-white ${
-                  !selectedTmkUser || assigning
+                  selectedTmkUsers.size === 0 || assigning
                     ? "bg-gray-400 cursor-not-allowed"
                     : "bg-indigo-600 hover:bg-indigo-700"
                 }`}
               >
-                {assigning ? "กำลังบันทึก..." : "กำหนดสิทธิ์"}
+                {assigning ? "กำลังบันทึก..." : `กำหนดสิทธิ์ (${selectedTmkUsers.size})`}
               </button>
               <button
                 type="button"

@@ -268,7 +268,7 @@ export default function PRDocumentReceiptModal({
 
                       {/* ผู้อนุมัติตามสายงาน */}
                       <div className="border rounded-md p-3 bg-blue-50">
-                        <span className="text-sm font-medium text-gray-700">ผู้อนุมัติตามสายงาน:</span>
+                        <span className="text-sm font-medium text-gray-700">ผู้อนุมัติตามสายงาน(ของผู้เปิด):</span>
 
                         {/* แสดงสถานะการอนุมัติ - เมื่ออนุมัติแล้ว */}
                         {existingReceipt?.line_approval_at && (

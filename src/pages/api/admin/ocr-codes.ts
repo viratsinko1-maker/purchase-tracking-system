@@ -49,6 +49,67 @@ async function handler(
       userName?: string;
     };
 
+    // Manual create
+    if (action === "create") {
+      const { code, name, remarks } = req.body as {
+        code?: number;
+        name?: string;
+        remarks?: string;
+      };
+
+      if (!code || !name) {
+        return res.status(400).json({ error: "กรุณาระบุ code และ name" });
+      }
+
+      try {
+        // Check duplicate code
+        const existingCode = await db.ocr_code_and_name.findUnique({ where: { code } });
+        if (existingCode) {
+          return res.status(400).json({ error: `รหัส code ${code} มีอยู่แล้ว (${existingCode.name})` });
+        }
+
+        // Check duplicate name
+        const existingName = await db.ocr_code_and_name.findUnique({ where: { name: name.trim() } });
+        if (existingName) {
+          return res.status(400).json({ error: `ชื่อ OCR "${name.trim()}" มีอยู่แล้ว (code: ${existingName.code})` });
+        }
+
+        const now = new Date();
+        const created = await db.ocr_code_and_name.create({
+          data: {
+            code,
+            name: name.trim(),
+            remarks: remarks?.trim() || null,
+            updatedAt: now,
+          },
+        });
+
+        // Audit log
+        createAuditLog(db, {
+          userId: adminUserId,
+          userName: adminUserName,
+          action: AuditAction.CREATE,
+          tableName: "ocr_code_and_name",
+          recordId: String(created.id),
+          newValues: { code, name: name.trim(), remarks: remarks?.trim() || null },
+          description: `เพิ่มรหัสแผนกด้วยมือ: ${name.trim()} (code: ${code})`,
+          ipAddress: getIpFromRequest(req),
+        }).catch(console.error);
+
+        return res.status(201).json({
+          success: true,
+          data: created,
+          message: `สร้างรหัสแผนก ${name.trim()} สำเร็จ`,
+        });
+      } catch (error) {
+        console.error("Create OCR code error:", error);
+        return res.status(500).json({
+          error: "เกิดข้อผิดพลาดในการสร้างรหัสแผนก",
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     if (action === "sync") {
       let pool: sql.ConnectionPool | null = null;
 

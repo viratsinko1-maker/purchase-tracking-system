@@ -62,6 +62,11 @@ function WorkflowContent() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Manual create state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({ code: "", name: "", remarks: "" });
+
   // Expand/Collapse state
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
@@ -392,6 +397,51 @@ function WorkflowContent() {
     }
   };
 
+  // Manual create OCR code
+  const handleCreate = async () => {
+    const code = parseInt(createForm.code, 10);
+    if (!createForm.code || isNaN(code)) {
+      alert("กรุณาระบุ Code (ตัวเลข)");
+      return;
+    }
+    if (!createForm.name.trim()) {
+      alert("กรุณาระบุชื่อ OCR (เลขแผนก)");
+      return;
+    }
+
+    try {
+      setCreating(true);
+      const response = await authFetch("/api/admin/ocr-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          code,
+          name: createForm.name.trim(),
+          remarks: createForm.remarks.trim() || undefined,
+          userId: user?.id,
+          userName: user?.name ?? user?.username,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setShowCreateModal(false);
+        setCreateForm({ code: "", name: "", remarks: "" });
+        setSyncResult({ success: true, message: data.message });
+        setShowSyncModal(true);
+        await fetchOCRCodes();
+      } else {
+        alert(data.error || "เกิดข้อผิดพลาด");
+      }
+    } catch (error) {
+      console.error("Create error:", error);
+      alert("เกิดข้อผิดพลาดในการสร้างรหัสแผนก");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // Filter OCR codes by search term
   const filteredCodes = ocrCodes.filter((code) => {
     const searchLower = searchTerm.toLowerCase();
@@ -516,8 +566,15 @@ function WorkflowContent() {
             />
           </div>
 
-          {/* Sync Button - Only for Admin */}
+          {/* Action Buttons - Only for Admin */}
           {isAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="rounded-lg bg-indigo-600 px-6 py-2 text-white font-medium hover:bg-indigo-700 transition"
+              >
+                + เพิ่มรหัสแผนก
+              </button>
             <button
               onClick={handleSync}
               disabled={syncing}
@@ -535,6 +592,7 @@ function WorkflowContent() {
                 "Sync จาก SAP"
               )}
             </button>
+            </div>
           )}
         </div>
 
@@ -764,7 +822,7 @@ function WorkflowContent() {
                       สมาชิก
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
-                      ผู้อนุมัติตามสายงาน
+                      ผู้อนุมัติตามสายงาน(ของผู้เปิด)
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                       ผู้อนุมัติตาม Cost Center
@@ -1046,6 +1104,76 @@ function WorkflowContent() {
                 }`}
               >
                 ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create OCR Code Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+            <div className="border-b px-6 py-4">
+              <h3 className="text-lg font-bold text-gray-900">เพิ่มรหัสแผนกใหม่</h3>
+              <p className="text-sm text-gray-600">สำหรับรหัสแผนกที่ไม่มีใน SAP</p>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Code (เลขลำดับ) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={createForm.code}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, code: e.target.value }))}
+                  placeholder="เช่น 999"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ชื่อ OCR / เลขแผนก <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="เช่น 21025"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  หมายเหตุ / ชื่อแผนก
+                </label>
+                <input
+                  type="text"
+                  value={createForm.remarks}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                  placeholder="เช่น แผนกวิศวกรรม"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="border-t px-6 py-4 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setCreateForm({ code: "", name: "", remarks: "" });
+                }}
+                className="flex-1 rounded-lg bg-gray-300 px-4 py-2 text-gray-700 font-medium hover:bg-gray-400 transition"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating}
+                className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-white font-medium hover:bg-indigo-700 disabled:bg-gray-400 transition"
+              >
+                {creating ? "กำลังบันทึก..." : "บันทึก"}
               </button>
             </div>
           </div>
