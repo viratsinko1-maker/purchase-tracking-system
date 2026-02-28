@@ -1,0 +1,46 @@
+# Dependencies (will be installed fresh in Docker)
+node_modules
+.pnp
+.pnp.js
+
+# Build output
+.next
+out
+build
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc files not needed in Docker
+*.pdf
+*.png
+*.zip
+*.md
+!prisma/*.md
+
+# Docker files (don't copy themselves)
+docker-compose.yml
+postgres.conf
+nginx.conf
+
+# PM2 (not used in Docker)
+ecosystem.config.cjs
+
+# Claude
+.claude
