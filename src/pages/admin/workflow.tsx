@@ -83,6 +83,9 @@ function WorkflowContent() {
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [addingUser, setAddingUser] = useState<string | null>(null);
 
+  // Delete OCR code state
+  const [deletingOcrId, setDeletingOcrId] = useState<number | null>(null);
+
   // Approvers state (new multi-approver system)
   const [approvers, setApprovers] = useState<Map<number, Approver[]>>(new Map());
   const [addingApprover, setAddingApprover] = useState<{ ocrId: number; type: "line" | "cost_center"; userId: string } | null>(null);
@@ -442,6 +445,45 @@ function WorkflowContent() {
     }
   };
 
+  // Delete OCR code
+  const handleDeleteOcrCode = async (ocrCode: OCRCode) => {
+    const memberCount = assignmentCounts.get(ocrCode.id) || 0;
+    if (memberCount > 0) {
+      alert(`ไม่สามารถลบได้ — มีสมาชิกอยู่ ${memberCount} คน กรุณาลบสมาชิกออกก่อน`);
+      return;
+    }
+
+    if (!confirm(`ต้องการลบรหัสแผนก "${ocrCode.name}" (${ocrCode.remarks || "-"}) หรือไม่?`)) return;
+
+    setDeletingOcrId(ocrCode.id);
+    try {
+      const response = await authFetch("/api/admin/ocr-codes", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: ocrCode.id,
+          userId: user?.id,
+          userName: user?.name ?? user?.username,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setSyncResult({ success: true, message: data.message });
+        setShowSyncModal(true);
+        await fetchOCRCodes();
+        await fetchAssignmentCounts();
+      } else {
+        alert(data.error || "เกิดข้อผิดพลาด");
+      }
+    } catch (error) {
+      console.error("Delete OCR code error:", error);
+      alert("เกิดข้อผิดพลาดในการลบรหัสแผนก");
+    } finally {
+      setDeletingOcrId(null);
+    }
+  };
+
   // Filter OCR codes by search term
   const filteredCodes = ocrCodes.filter((code) => {
     const searchLower = searchTerm.toLowerCase();
@@ -711,15 +753,32 @@ function WorkflowContent() {
                           </td>
                           {isAdmin && (
                             <td className="px-4 py-3 text-sm text-center">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openUserModal(code);
-                                }}
-                                className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700"
-                              >
-                                + เพิ่มคน
-                              </button>
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openUserModal(code);
+                                  }}
+                                  className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-700"
+                                >
+                                  + เพิ่มคน
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleDeleteOcrCode(code);
+                                  }}
+                                  disabled={deletingOcrId === code.id || (assignmentCounts.get(code.id) || 0) > 0}
+                                  className="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                  title={
+                                    (assignmentCounts.get(code.id) || 0) > 0
+                                      ? "ไม่สามารถลบได้ — มีสมาชิกอยู่ในแผนก"
+                                      : "ลบรหัสแผนก"
+                                  }
+                                >
+                                  {deletingOcrId === code.id ? "กำลังลบ..." : "ลบ"}
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>

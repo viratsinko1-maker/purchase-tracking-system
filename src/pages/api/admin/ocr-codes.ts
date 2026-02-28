@@ -287,6 +287,73 @@ async function handler(
     }
   }
 
+  // DELETE - ลบรหัสแผนก (เฉพาะที่ไม่มีสมาชิกและผู้อนุมัติ)
+  if (req.method === "DELETE") {
+    const { id, userId: adminUserId, userName: adminUserName } = req.body as {
+      id?: number;
+      userId?: string;
+      userName?: string;
+    };
+
+    if (!id) {
+      return res.status(400).json({ error: "กรุณาระบุ id" });
+    }
+
+    try {
+      // Check if OCR code exists
+      const ocrCode = await db.ocr_code_and_name.findUnique({ where: { id } });
+      if (!ocrCode) {
+        return res.status(404).json({ error: "ไม่พบรหัสแผนกนี้" });
+      }
+
+      // Check for members
+      const memberCount = await db.ocr_user_assignment.count({
+        where: { ocrCodeId: id },
+      });
+      if (memberCount > 0) {
+        return res.status(400).json({
+          error: `ไม่สามารถลบได้ — มีสมาชิกอยู่ ${memberCount} คน กรุณาลบสมาชิกออกก่อน`,
+        });
+      }
+
+      // Check for approvers
+      const approverCount = await db.ocr_approver.count({
+        where: { ocrCodeId: id },
+      });
+      if (approverCount > 0) {
+        return res.status(400).json({
+          error: `ไม่สามารถลบได้ — มีผู้อนุมัติอยู่ ${approverCount} คน กรุณาลบผู้อนุมัติออกก่อน`,
+        });
+      }
+
+      // Delete
+      await db.ocr_code_and_name.delete({ where: { id } });
+
+      // Audit log
+      createAuditLog(db, {
+        userId: adminUserId,
+        userName: adminUserName,
+        action: AuditAction.DELETE,
+        tableName: "ocr_code_and_name",
+        recordId: String(id),
+        oldValues: { code: ocrCode.code, name: ocrCode.name, remarks: ocrCode.remarks },
+        description: `ลบรหัสแผนก: ${ocrCode.name} (code: ${ocrCode.code})`,
+        ipAddress: getIpFromRequest(req),
+      }).catch(console.error);
+
+      return res.status(200).json({
+        success: true,
+        message: `ลบรหัสแผนก ${ocrCode.name} สำเร็จ`,
+      });
+    } catch (error) {
+      console.error("Delete OCR code error:", error);
+      return res.status(500).json({
+        error: "เกิดข้อผิดพลาดในการลบรหัสแผนก",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return res.status(405).json({ error: "Method not allowed" });
 }
 
@@ -295,4 +362,5 @@ async function handler(
 export default withMethodPermissions(handler, {
   POST: { tableName: 'admin_workflow', action: 'sync' },
   PUT: { tableName: 'admin_workflow', action: 'update' },
+  DELETE: { tableName: 'admin_workflow', action: 'delete' },
 });
