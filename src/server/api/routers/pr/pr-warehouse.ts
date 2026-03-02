@@ -284,6 +284,24 @@ ${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''
         ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
 
+      // 🔔 ลบ notification goods_ready ถ้า PR นี้ไม่เหลือ receive record แล้ว
+      try {
+        const remaining = await ctx.db.warehouse_receivegood.count({
+          where: { pr_doc_num: record.pr_doc_num },
+        });
+
+        if (remaining === 0) {
+          await ctx.db.user_notification.deleteMany({
+            where: {
+              type: 'goods_ready',
+              pr_doc_num: record.pr_doc_num,
+            },
+          });
+        }
+      } catch (err) {
+        console.error('[Notification] Failed to cleanup goods_ready notification:', err);
+      }
+
       return {
         success: true,
         message: `ลบรายการ PR #${record.pr_doc_num} Line ${record.line_num} สำเร็จ`,
@@ -300,6 +318,13 @@ ${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''
     }))
     .mutation(async ({ ctx, input }) => {
       const { ids, deletedBy, deletedByUserId } = input;
+
+      // ดึง PR numbers ที่เกี่ยวข้องก่อนลบ
+      const recordsToDelete = await ctx.db.warehouse_receivegood.findMany({
+        where: { id: { in: ids } },
+        select: { pr_doc_num: true },
+      });
+      const affectedPRs = [...new Set(recordsToDelete.map(r => r.pr_doc_num))];
 
       const result = await ctx.db.warehouse_receivegood.deleteMany({
         where: {
@@ -318,6 +343,26 @@ ${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''
         metadata: { deletedCount: result.count },
         ipAddress: getIpFromContext(ctx),
       }).catch(console.error);
+
+      // 🔔 ลบ notification goods_ready สำหรับ PR ที่ไม่เหลือ receive record แล้ว
+      try {
+        for (const prDocNum of affectedPRs) {
+          const remaining = await ctx.db.warehouse_receivegood.count({
+            where: { pr_doc_num: prDocNum },
+          });
+
+          if (remaining === 0) {
+            await ctx.db.user_notification.deleteMany({
+              where: {
+                type: 'goods_ready',
+                pr_doc_num: prDocNum,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[Notification] Failed to cleanup goods_ready notifications:', err);
+      }
 
       return {
         success: true,

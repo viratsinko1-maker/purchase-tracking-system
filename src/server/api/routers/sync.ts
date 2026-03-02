@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   createTRPCRouter,
   createTableProcedure,
+  authenticatedProcedure,
 } from "~/server/api/trpc";
 import { getSyncStatus, runFullAutoSync, runManualPRFullRefresh } from "~/server/auto-sync-scheduler";
 
@@ -17,7 +18,7 @@ export const syncRouter = createTRPCRouter({
    * - Block manual sync button ขณะที่ auto-sync ทำงาน
    * - Trigger auto-refresh เมื่อ sync เสร็จ
    */
-  getStatus: createTableProcedure('admin_sync_pr', 'read').query(async () => {
+  getStatus: authenticatedProcedure.query(async () => {
     return getSyncStatus();
   }),
 
