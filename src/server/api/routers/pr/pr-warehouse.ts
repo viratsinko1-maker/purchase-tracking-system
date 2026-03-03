@@ -499,7 +499,7 @@ ${prMaster.job_name ? `🏗️ โครงการ: ${prMaster.job_name}` : ''
           where: { id: item.id },
           data: {
             confirm_status: item.confirm_status,
-            confirm_remarks: item.confirm_status === 'rejected' ? item.confirm_remarks : null,
+            confirm_remarks: item.confirm_remarks || null,
             confirmed_at: item.confirm_status !== 'waiting' ? now : null,
             confirmed_by: item.confirm_status !== 'waiting' ? confirmed_by : null,
             updated_at: now,

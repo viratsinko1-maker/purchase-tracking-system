@@ -643,6 +643,11 @@ function ReceiveGoodListContent() {
                                       </svg>
                                       Confirmed
                                     </span>
+                                    {item.confirm_remarks && (
+                                      <span className="text-xs text-green-600 mt-0.5" title={item.confirm_remarks}>
+                                        {item.confirm_remarks.length > 30 ? item.confirm_remarks.substring(0, 30) + '...' : item.confirm_remarks}
+                                      </span>
+                                    )}
                                     {item.confirmed_at && (
                                       <span className="text-xs text-gray-500 mt-0.5">
                                         {formatThaiDateTime(item.confirmed_at)} by {item.confirmed_by}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
@@ -17,6 +17,13 @@ interface ReceiveLineState {
   unitMsr: string | null;
   isChecked: boolean;
   error: string | null;
+  poList: Array<{
+    po_doc_num: number;
+    po_due_date: Date | null;
+    po_description: string | null;
+    po_quantity: number | null;
+    po_status: string | null;
+  }>;
 }
 
 interface SelectedFile {
@@ -101,6 +108,16 @@ function ReceiveGoodNewContent() {
     { enabled: !!selectedPR?.doc_num }
   );
 
+  // Fetch PO info (วันที่ออก PO) - เหมือน PRDetailModal
+  const poNumbers = prDetails?.lines
+    .flatMap((line: any) => (line.po_list || []).map((po: any) => po.po_doc_num))
+    .filter((num: number, index: number, self: number[]) => self.indexOf(num) === index) || [];
+
+  const { data: poInfoMap } = api.pr.getPOInfoBatch.useQuery(
+    { poNumbers },
+    { enabled: poNumbers.length > 0 }
+  );
+
   // Save mutation
   const saveMutation = api.pr.saveReceiveGoods.useMutation({
     onSuccess: () => {
@@ -133,6 +150,7 @@ function ReceiveGoodNewContent() {
             unitMsr: line.unit_msr,
             isChecked: false,
             error: null,
+            poList: (line as any).po_list || [],
           };
         })
         .filter(line => line.alreadyReceived === 0); // Hide lines that have been received (even partially)
@@ -607,46 +625,72 @@ function ReceiveGoodNewContent() {
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {receiveLines.map((line) => (
-                        <tr key={line.lineId} className={line.isChecked ? "bg-green-50" : "hover:bg-gray-50"}>
-                          <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-600">{line.itemCode || "-"}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900 max-w-xs truncate" title={line.description || ""}>{line.description || "-"}</td>
-                          <td className="whitespace-nowrap px-3 py-3 text-sm text-right text-gray-900">
-                            <div>
-                              <span className="font-medium">{line.remainingQty.toLocaleString()}</span>
-                              {line.unitMsr && <span className="text-gray-500 ml-1">{line.unitMsr}</span>}
-                            </div>
-                            {line.alreadyReceived > 0 && (
-                              <div className="text-xs text-gray-400">
-                                (รับแล้ว {line.alreadyReceived.toLocaleString()} / {line.originalQty.toLocaleString()})
+                        <Fragment key={line.lineId}>
+                          <tr className={line.isChecked ? "bg-green-50" : "hover:bg-gray-50"}>
+                            <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-600">{line.itemCode || "-"}</td>
+                            <td className="px-3 py-3 text-sm text-gray-900 max-w-xs truncate" title={line.description || ""}>{line.description || "-"}</td>
+                            <td className="whitespace-nowrap px-3 py-3 text-sm text-right text-gray-900">
+                              <div>
+                                <span className="font-medium">{line.remainingQty.toLocaleString()}</span>
+                                {line.unitMsr && <span className="text-gray-500 ml-1">{line.unitMsr}</span>}
                               </div>
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 text-center">
-                            <div className="flex flex-col items-center">
+                              {line.alreadyReceived > 0 && (
+                                <div className="text-xs text-gray-400">
+                                  (รับแล้ว {line.alreadyReceived.toLocaleString()} / {line.originalQty.toLocaleString()})
+                                </div>
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-3 text-center">
+                              <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  value={line.receiveQty}
+                                  onChange={(e) => handleReceiveQtyChange(line.lineId, e.target.value)}
+                                  min="0"
+                                  max={line.remainingQty}
+                                  step="0.01"
+                                  className={`w-24 rounded border px-2 py-1 text-center text-sm ${
+                                    line.error ? "border-red-500 bg-red-50" : "border-gray-300"
+                                  }`}
+                                />
+                                {line.error && <span className="text-xs text-red-500 mt-1">{line.error}</span>}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-3 text-center">
                               <input
-                                type="number"
-                                value={line.receiveQty}
-                                onChange={(e) => handleReceiveQtyChange(line.lineId, e.target.value)}
-                                min="0"
-                                max={line.remainingQty}
-                                step="0.01"
-                                className={`w-24 rounded border px-2 py-1 text-center text-sm ${
-                                  line.error ? "border-red-500 bg-red-50" : "border-gray-300"
-                                }`}
+                                type="checkbox"
+                                checked={line.isChecked}
+                                onChange={(e) => handleCheckChange(line.lineId, e.target.checked)}
+                                disabled={!!line.error || line.receiveQty <= 0 || line.receiveQty > line.remainingQty}
+                                className="h-5 w-5 rounded border-gray-300 text-green-600 focus:ring-green-500 disabled:opacity-50"
                               />
-                              {line.error && <span className="text-xs text-red-500 mt-1">{line.error}</span>}
-                            </div>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={line.isChecked}
-                              onChange={(e) => handleCheckChange(line.lineId, e.target.checked)}
-                              disabled={!!line.error || line.receiveQty <= 0 || line.receiveQty > line.remainingQty}
-                              className="h-5 w-5 rounded border-gray-300 text-green-600 focus:ring-green-500 disabled:opacity-50"
-                            />
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                          {line.poList.length > 0 && line.poList.map((po, idx) => {
+                            const poInfo = poInfoMap && (poInfoMap as any).get ? (poInfoMap as any).get(po.po_doc_num) : null;
+                            const fmtDate = (d: Date | string | null) => d ? new Date(d).toLocaleDateString("th-TH", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "-";
+                            return (
+                              <tr key={`${line.lineId}-po-${idx}`} className="bg-blue-50">
+                                <td colSpan={5} className="px-4 py-1.5 text-xs text-blue-700">
+                                  <span className="font-semibold">PO #{po.po_doc_num}</span>
+                                  <span className="ml-1">({po.po_status === "O" ? "Open" : "Closed"})</span>
+                                  {poInfo?.po_doc_date && (
+                                    <span className="ml-1"> — ออกเมื่อ: {fmtDate(poInfo.po_doc_date)}</span>
+                                  )}
+                                  {po.po_description && (
+                                    <span className="ml-1"> — {po.po_description}</span>
+                                  )}
+                                  {po.po_quantity != null && (
+                                    <span className="ml-1"> — จำนวน: {po.po_quantity.toLocaleString()}</span>
+                                  )}
+                                  {po.po_due_date && (
+                                    <span className="ml-1"> — ครบกำหนด: {fmtDate(po.po_due_date)}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

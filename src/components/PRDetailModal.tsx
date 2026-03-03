@@ -1283,130 +1283,198 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
               {/* Summary */}
-              <div className="mb-4 flex flex-wrap gap-3">
-                <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
-                  Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
-                </span>
-                <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
-                  Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
-                </span>
-                <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
-                  Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
-                </span>
-              </div>
+              {(() => {
+                // Group records by batch_key
+                const batchMap = new Map<string, any[]>();
+                receiveGoodData.forEach((record: any) => {
+                  const key = record.batch_key || `no-batch-${record.id}`;
+                  if (!batchMap.has(key)) batchMap.set(key, []);
+                  batchMap.get(key)!.push(record);
+                });
+                const batches = Array.from(batchMap.entries()).map(([key, items]) => ({
+                  batch_key: key,
+                  received_at: items[0].received_at,
+                  received_by: items[0].received_by,
+                  items,
+                  confirmedCount: items.filter((i: any) => i.confirm_status === 'confirmed').length,
+                  rejectedCount: items.filter((i: any) => i.confirm_status === 'rejected').length,
+                  waitingCount: items.filter((i: any) => i.confirm_status === 'waiting' || !i.confirm_status).length,
+                }));
+                // Sort by received_at ASC so oldest = รอบที่ 1
+                batches.sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime());
+                const totalBatches = batches.length;
 
-              {/* Table */}
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Line</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">รหัส</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">รายละเอียด</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">จำนวนรับ</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">สถานะ</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">วันที่รับของ (Warehouse)</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">วันที่ยืนยัน</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {receiveGoodData.map((record: any) => {
-                      // Calculate time difference
-                      const receivedAt = new Date(record.received_at);
-                      const confirmedAt = record.confirmed_at ? new Date(record.confirmed_at) : null;
-                      let timeDiff = '-';
-                      if (confirmedAt) {
-                        const diffMs = confirmedAt.getTime() - receivedAt.getTime();
-                        const diffMins = Math.floor(diffMs / (1000 * 60));
-                        const diffHours = Math.floor(diffMins / 60);
-                        const diffDays = Math.floor(diffHours / 24);
-                        if (diffDays > 0) {
-                          timeDiff = `${diffDays} วัน ${diffHours % 24} ชั่วโมง`;
-                        } else if (diffHours > 0) {
-                          timeDiff = `${diffHours} ชั่วโมง ${diffMins % 60} นาที`;
-                        } else {
-                          timeDiff = `${diffMins} นาที`;
-                        }
-                      }
+                return (
+                  <>
+                    <div className="mb-4 flex flex-wrap gap-3 items-center">
+                      <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+                        รับของ {totalBatches} รอบ / {receiveGoodData.length} รายการ
+                      </span>
+                      <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                        Confirmed: {receiveGoodData.filter((r: any) => r.confirm_status === 'confirmed').length}
+                      </span>
+                      <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+                        Rejected: {receiveGoodData.filter((r: any) => r.confirm_status === 'rejected').length}
+                      </span>
+                      <span className="rounded-full bg-yellow-100 px-3 py-1 text-sm font-medium text-yellow-700">
+                        Waiting: {receiveGoodData.filter((r: any) => r.confirm_status === 'waiting' || !r.confirm_status).length}
+                      </span>
+                    </div>
 
-                      return (
-                        <tr
-                          key={record.id}
-                          className={
-                            record.confirm_status === 'confirmed' ? 'bg-green-50' :
-                            record.confirm_status === 'rejected' ? 'bg-red-50' : ''
-                          }
-                        >
-                          <td className="px-4 py-3 text-gray-900">{record.line_num}</td>
-                          <td className="px-4 py-3 text-gray-600">{record.item_code || '-'}</td>
-                          <td className="px-4 py-3 text-gray-900 max-w-md truncate" title={record.description || ''}>
-                            {record.description || '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-900">
-                            {Number(record.received_qty).toLocaleString()}
-                            {record.unit_msr && <span className="text-gray-500 ml-1">{record.unit_msr}</span>}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {record.confirm_status === 'confirmed' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                                ✓ Confirmed
-                              </span>
-                            ) : record.confirm_status === 'rejected' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700" title={record.confirm_remarks || ''}>
-                                ✗ Rejected
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                                ⏳ Waiting
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                            <div>
-                              <div>{receivedAt.toLocaleString('th-TH', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}</div>
-                              {record.received_by && (
-                                <div className="text-gray-400">by {record.received_by}</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                            {confirmedAt ? (
-                              <div>
-                                <div>{confirmedAt.toLocaleString('th-TH', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}</div>
-                                {record.confirmed_by && (
-                                  <div className="text-gray-400">by {record.confirmed_by}</div>
+                    {/* Batches - newest first */}
+                    <div className="space-y-4">
+                      {[...batches].reverse().map((batch, index) => {
+                        const batchNum = totalBatches - index;
+                        const allConfirmed = batch.waitingCount === 0 && batch.rejectedCount === 0 && batch.confirmedCount > 0;
+                        const hasRejected = batch.rejectedCount > 0;
+                        const borderClass = allConfirmed
+                          ? 'border-green-400 bg-green-50'
+                          : hasRejected
+                            ? 'border-red-400 bg-red-50'
+                            : 'border-gray-200 bg-white';
+                        const batchReceivedAt = new Date(batch.received_at);
+
+                        return (
+                          <div key={batch.batch_key} className={`rounded-lg border-2 ${borderClass} overflow-hidden`}>
+                            {/* Batch Header */}
+                            <div className="p-3 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className="font-semibold text-gray-900">รอบที่ {batchNum}</span>
+                                <span className="text-sm text-gray-500">
+                                  {batchReceivedAt.toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                {batch.received_by && (
+                                  <span className="text-sm text-gray-500">by {batch.received_by}</span>
                                 )}
                               </div>
-                            ) : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {record.confirm_status !== 'waiting' && confirmedAt ? (
-                              <span className={`text-xs font-medium ${
-                                record.confirm_status === 'confirmed' ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {timeDiff}
-                              </span>
-                            ) : '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                  {batch.items.length} items
+                                </span>
+                                {batch.confirmedCount > 0 && (
+                                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                                    ✓ {batch.confirmedCount}
+                                  </span>
+                                )}
+                                {batch.rejectedCount > 0 && (
+                                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                                    ✗ {batch.rejectedCount}
+                                  </span>
+                                )}
+                                {batch.waitingCount > 0 && (
+                                  <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                                    ⏳ {batch.waitingCount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Batch Items Table */}
+                            <div className="border-t bg-white">
+                              <table className="min-w-full text-sm">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Line</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">รหัส</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">รายละเอียด</th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">จำนวนรับ</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">สถานะ</th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">วันที่ยืนยัน</th>
+                                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {batch.items.map((record: any) => {
+                                    const confirmedAt = record.confirmed_at ? new Date(record.confirmed_at) : null;
+                                    let timeDiff = '-';
+                                    if (confirmedAt) {
+                                      const diffMs = confirmedAt.getTime() - batchReceivedAt.getTime();
+                                      const diffMins = Math.floor(diffMs / (1000 * 60));
+                                      const diffHours = Math.floor(diffMins / 60);
+                                      const diffDays = Math.floor(diffHours / 24);
+                                      if (diffDays > 0) {
+                                        timeDiff = `${diffDays} วัน ${diffHours % 24} ชั่วโมง`;
+                                      } else if (diffHours > 0) {
+                                        timeDiff = `${diffHours} ชั่วโมง ${diffMins % 60} นาที`;
+                                      } else {
+                                        timeDiff = `${diffMins} นาที`;
+                                      }
+                                    }
+
+                                    return (
+                                      <tr
+                                        key={record.id}
+                                        className={
+                                          record.confirm_status === 'confirmed' ? 'bg-green-50' :
+                                          record.confirm_status === 'rejected' ? 'bg-red-50' : ''
+                                        }
+                                      >
+                                        <td className="px-4 py-2 text-gray-900">{record.line_num}</td>
+                                        <td className="px-4 py-2 text-gray-600">{record.item_code || '-'}</td>
+                                        <td className="px-4 py-2 text-gray-900 max-w-xs truncate" title={record.description || ''}>
+                                          {record.description || '-'}
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-gray-900">
+                                          {Number(record.received_qty).toLocaleString()}
+                                          {record.unit_msr && <span className="text-gray-500 ml-1">{record.unit_msr}</span>}
+                                        </td>
+                                        <td className="px-4 py-2 text-center">
+                                          {record.confirm_status === 'confirmed' ? (
+                                            <div className="flex flex-col items-center gap-0.5">
+                                              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                                                ✓ Confirmed
+                                              </span>
+                                              {record.confirm_remarks && (
+                                                <span className="text-xs text-green-600">{record.confirm_remarks}</span>
+                                              )}
+                                            </div>
+                                          ) : record.confirm_status === 'rejected' ? (
+                                            <div className="flex flex-col items-center gap-0.5">
+                                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                                                ✗ Rejected
+                                              </span>
+                                              {record.confirm_remarks && (
+                                                <span className="text-xs text-red-600">{record.confirm_remarks}</span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                                              ⏳ Waiting
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-2 text-gray-600 text-xs whitespace-nowrap">
+                                          {confirmedAt ? (
+                                            <div>
+                                              <div>{confirmedAt.toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                                              {record.confirmed_by && (
+                                                <div className="text-gray-400">by {record.confirmed_by}</div>
+                                              )}
+                                            </div>
+                                          ) : '-'}
+                                        </td>
+                                        <td className="px-4 py-2 text-center">
+                                          {record.confirm_status !== 'waiting' && confirmedAt ? (
+                                            <span className={`text-xs font-medium ${
+                                              record.confirm_status === 'confirmed' ? 'text-green-600' : 'text-red-600'
+                                            }`}>
+                                              {timeDiff}
+                                            </span>
+                                          ) : '-'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Footer */}

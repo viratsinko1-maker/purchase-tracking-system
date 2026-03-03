@@ -127,7 +127,10 @@ export const prOverviewRouter = createTRPCRouter({
             WHERE pr_doc_num = s.doc_num AND project IS NOT NULL AND project != ''
             ORDER BY line_num LIMIT 1
           ) AS project_code_fallback,
-          (SELECT req_date FROM pr_master WHERE doc_num = s.doc_num) AS req_date
+          (SELECT req_date FROM pr_master WHERE doc_num = s.doc_num) AS req_date,
+          (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'waiting') AS receive_waiting,
+          (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'confirmed') AS receive_confirmed,
+          (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'rejected') AS receive_rejected
         FROM mv_pr_summary s
         LEFT JOIN pr_document_receipt r ON s.doc_num = r.pr_doc_num
         LEFT JOIN pr_document_approval a ON s.doc_num = a.pr_doc_num
@@ -148,6 +151,9 @@ export const prOverviewRouter = createTRPCRouter({
         // Project: ใช้ pr_project_link ก่อน ถ้าไม่มีใช้ pr_lines.project
         project_code: row.project_code || row.project_code_fallback || null,
         project_name: row.project_name || null,
+        receive_waiting: row.receive_waiting ? Number(row.receive_waiting) : 0,
+        receive_confirmed: row.receive_confirmed ? Number(row.receive_confirmed) : 0,
+        receive_rejected: row.receive_rejected ? Number(row.receive_rejected) : 0,
       }));
 
       return {

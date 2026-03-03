@@ -506,9 +506,14 @@ function ReceiveGoodReportContent() {
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                   {item.confirm_status === 'confirmed' ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                                      ✓ Confirmed
-                                    </span>
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                                        ✓ Confirmed
+                                      </span>
+                                      {item.confirm_remarks && (
+                                        <span className="text-xs text-green-600">{item.confirm_remarks}</span>
+                                      )}
+                                    </div>
                                   ) : item.confirm_status === 'rejected' ? (
                                     <div className="flex flex-col items-center gap-0.5">
                                       <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">

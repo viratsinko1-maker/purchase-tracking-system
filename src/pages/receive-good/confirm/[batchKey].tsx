@@ -89,7 +89,7 @@ export default function ConfirmGoodPage() {
     setItems(prev => prev.map(item => {
       // Don't allow changes if already confirmed or rejected
       if (item.id === itemId && item.current_status === 'waiting') {
-        return { ...item, confirm_status: status, confirm_remarks: status === 'rejected' ? item.confirm_remarks : '' };
+        return { ...item, confirm_status: status, confirm_remarks: item.confirm_remarks };
       }
       return item;
     }));
@@ -138,7 +138,7 @@ export default function ConfirmGoodPage() {
         items: items.map(item => ({
           id: item.id,
           confirm_status: item.confirm_status,
-          confirm_remarks: item.confirm_status === 'rejected' ? item.confirm_remarks : undefined,
+          confirm_remarks: item.confirm_remarks.trim() || undefined,
         })),
         confirmed_by: user.name || user.username || 'Unknown',
       });
@@ -371,14 +371,26 @@ export default function ConfirmGoodPage() {
                     {item.current_status === 'rejected' ? (
                       // Already rejected - show remarks only
                       <span className="text-sm text-red-600">{item.confirm_remarks || '-'}</span>
+                    ) : item.current_status === 'confirmed' ? (
+                      // Already confirmed - show remarks if any
+                      item.confirm_remarks ? <span className="text-sm text-green-600">{item.confirm_remarks}</span> : null
                     ) : item.confirm_status === 'rejected' && item.current_status === 'waiting' ? (
-                      // Selecting reject - show input
+                      // Selecting reject - show input (required)
                       <input
                         type="text"
                         value={item.confirm_remarks}
                         onChange={(e) => handleRemarksChange(item.id, e.target.value)}
                         placeholder="ระบุเหตุผล..."
                         className="w-full rounded-lg border border-red-300 px-3 py-1.5 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                    ) : item.confirm_status === 'confirmed' && item.current_status === 'waiting' ? (
+                      // Selecting confirm - show input (optional)
+                      <input
+                        type="text"
+                        value={item.confirm_remarks}
+                        onChange={(e) => handleRemarksChange(item.id, e.target.value)}
+                        placeholder="หมายเหตุ (ไม่บังคับ)..."
+                        className="w-full rounded-lg border border-green-300 px-3 py-1.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
                       />
                     ) : null}
                   </td>

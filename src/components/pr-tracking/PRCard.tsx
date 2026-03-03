@@ -49,6 +49,9 @@ interface PRData {
   vpc_approval_by?: string | null;
   po_numbers?: number[];
   wo_numbers_arr?: number[];
+  receive_waiting?: number;
+  receive_confirmed?: number;
+  receive_rejected?: number;
 }
 
 interface PRCardProps {
@@ -144,6 +147,28 @@ export default function PRCard({
             <> | WO-{pr.wo_numbers_arr.join(', WO-')}</>
           )}
         </p>
+
+        {/* Receive Good Status */}
+        {(pr.receive_waiting || pr.receive_confirmed || pr.receive_rejected) ? (
+          <div className="mt-1.5 flex items-center gap-2 text-xs">
+            <span className="font-medium text-gray-700">การรับของ:</span>
+            {(pr.receive_waiting ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 border border-amber-200">
+                Waiting {pr.receive_waiting}
+              </span>
+            )}
+            {(pr.receive_confirmed ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-green-50 px-1.5 py-0.5 font-medium text-green-700 border border-green-200">
+                Confirmed {pr.receive_confirmed}
+              </span>
+            )}
+            {(pr.receive_rejected ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 font-medium text-red-700 border border-red-200">
+                Rejected {pr.receive_rejected}
+              </span>
+            )}
+          </div>
+        ) : null}
 
         {/* Job Name */}
         {pr.job_name && (
