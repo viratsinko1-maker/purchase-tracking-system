@@ -55,6 +55,12 @@ export default function TopBar() {
   );
 
   const markAsReadMutation = api.notification.markAsRead.useMutation();
+  const utils = api.useUtils();
+  const deleteReadMutation = api.notification.deleteReadNotifications.useMutation({
+    onSuccess: () => {
+      void utils.notification.getMyNotifications.invalidate();
+    },
+  });
 
   // รวม pending approvals กับ notifications
   type NotificationItem = {
@@ -110,6 +116,7 @@ export default function TopBar() {
 
   // นับ unread (approval นับทุกตัว + notification ที่ยังไม่อ่าน)
   const unreadCount = allNotifications.filter(n => !n.isRead).length;
+  const hasReadNotifications = myNotifications.some((n: (typeof myNotifications)[number]) => n.is_read);
   const pendingCount = pendingApprovals.length;
 
   if (!user) {
@@ -249,10 +256,27 @@ export default function TopBar() {
             {isNotificationOpen && (
               <div className="absolute right-0 mt-2 w-80 origin-top-right rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
                 {/* Header */}
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <span className="font-semibold text-gray-900">การแจ้งเตือน</span>
-                  {unreadCount > 0 && (
-                    <span className="ml-2 text-sm text-gray-500">({unreadCount} รายการ)</span>
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-gray-900">การแจ้งเตือน</span>
+                    {unreadCount > 0 && (
+                      <span className="ml-2 text-sm text-gray-500">({unreadCount} รายการ)</span>
+                    )}
+                  </div>
+                  {hasReadNotifications && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (user?.id) {
+                          deleteReadMutation.mutate({ userId: user.id });
+                        }
+                      }}
+                      disabled={deleteReadMutation.isPending}
+                      className="text-xs text-red-500 hover:text-red-700 transition"
+                      title="ล้างการแจ้งเตือนที่อ่านแล้ว"
+                    >
+                      {deleteReadMutation.isPending ? 'กำลังล้าง...' : 'ล้างที่อ่านแล้ว'}
+                    </button>
                   )}
                 </div>
 

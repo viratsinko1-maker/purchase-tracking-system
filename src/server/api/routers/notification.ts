@@ -13,6 +13,18 @@ export const notificationRouter = createTRPCRouter({
       unreadOnly: z.boolean().optional().default(false),
     }))
     .query(async ({ ctx, input }) => {
+      // Auto-cleanup: ลบ notification ที่อ่านแล้ว + เก่ากว่า 3 วัน
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      await ctx.db.user_notification.deleteMany({
+        where: {
+          user_id: input.userId,
+          is_read: true,
+          created_at: { lt: threeDaysAgo },
+        },
+      });
+
       const notifications = await ctx.db.user_notification.findMany({
         where: {
           user_id: input.userId,
@@ -60,6 +72,19 @@ export const notificationRouter = createTRPCRouter({
         data: { is_read: true },
       });
       return { success: true };
+    }),
+
+  // ลบ notification ที่อ่านแล้วทั้งหมด (สำหรับปุ่ม "ล้างที่อ่านแล้ว")
+  deleteReadNotifications: authenticatedProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db.user_notification.deleteMany({
+        where: {
+          user_id: input.userId,
+          is_read: true,
+        },
+      });
+      return { success: true, deletedCount: result.count };
     }),
 
   // ดึงรายชื่อผู้ขอ PR ที่ยังไม่ถูก link (สำหรับ dropdown ใน Admin Users)
