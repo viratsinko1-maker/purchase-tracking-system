@@ -1,8 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useAuth } from "~/hooks/useAuth";
 import { api } from "~/utils/api";
+
+interface SelectedFile {
+  id: string;
+  file: File;
+}
 
 interface ConfirmItemState {
   id: number;
@@ -26,7 +31,10 @@ export default function ConfirmGoodPage() {
 
   const [items, setItems] = useState<ConfirmItemState[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [prInfo, setPrInfo] = useState<{
     pr_doc_num: number;
     req_name: string | null;
@@ -134,6 +142,17 @@ export default function ConfirmGoodPage() {
     setSaveMessage(null);
 
     try {
+      // Upload files first (if any)
+      if (selectedFiles.length > 0) {
+        setIsUploading(true);
+        const uploaded = await uploadFiles();
+        setIsUploading(false);
+        if (!uploaded) {
+          setIsSaving(false);
+          return;
+        }
+      }
+
       await updateMutation.mutateAsync({
         items: items.map(item => ({
           id: item.id,
@@ -144,6 +163,7 @@ export default function ConfirmGoodPage() {
       });
     } finally {
       setIsSaving(false);
+      setIsUploading(false);
     }
   };
 
@@ -167,6 +187,58 @@ export default function ConfirmGoodPage() {
       return parts.reverse().join(' ');
     }
     return name;
+  };
+
+  // Fetch existing attachments for this batch
+  const { data: existingAttachments = [], refetch: refetchAttachments } = api.pr.getAttachmentsByBatch.useQuery(
+    { batchKey: batchKey as string },
+    { enabled: !!batchKey }
+  );
+
+  // File handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles: SelectedFile[] = Array.from(files).map(file => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file,
+    }));
+    setSelectedFiles(prev => [...prev, ...newFiles]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveFile = (id: string) => {
+    setSelectedFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const uploadFiles = async (): Promise<boolean> => {
+    if (selectedFiles.length === 0 || !prInfo) return true;
+    try {
+      const formData = new FormData();
+      formData.append('prDocNum', String(prInfo.pr_doc_num));
+      formData.append('batchKey', batchKey as string);
+      formData.append('uploadedBy', user?.name || user?.username || 'Unknown');
+      formData.append('uploadedByUserId', user?.id || '');
+      formData.append('category', 'document');
+      formData.append('source', 'confirm');
+      selectedFiles.forEach(sf => formData.append('files', sf.file));
+
+      const res = await fetch('/api/upload-receive-attachment', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      return true;
+    } catch {
+      setSaveMessage({ type: 'error', text: 'อัพโหลดไฟล์ไม่สำเร็จ' });
+      return false;
+    }
   };
 
   // Summary counts
@@ -400,6 +472,174 @@ export default function ConfirmGoodPage() {
           </table>
         </div>
 
+        {/* Existing Attachments from Warehouse (read-only) */}
+        {existingAttachments.filter((a: any) => a.source !== 'confirm').length > 0 && (
+          <div className="mt-6 rounded-lg bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <svg className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              ไฟล์แนบจาก Warehouse ({existingAttachments.filter((a: any) => a.source !== 'confirm').length})
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {existingAttachments.filter((a: any) => a.source !== 'confirm').map((att: any) => {
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name);
+                const isPdf = /\.pdf$/i.test(att.file_name);
+                return (
+                  <a
+                    key={att.id}
+                    href={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <div className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 group-hover:border-blue-400 transition bg-white flex items-center justify-center">
+                      {isImage ? (
+                        <img
+                          src={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                          alt={att.file_name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition"
+                        />
+                      ) : isPdf ? (
+                        <div className="flex flex-col items-center justify-center p-2 text-center">
+                          <svg className="h-10 w-10 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h2v5h-2v-5zm3 0h2v5h-2v-5zm-6 0h2v5H7v-5z"/>
+                          </svg>
+                          <span className="text-xs text-red-600 font-medium mt-1">PDF</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-2 text-center">
+                          <svg className="h-10 w-10 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-xs text-blue-600 font-medium mt-1">DOC</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1 text-center truncate group-hover:text-blue-600" title={att.file_name}>
+                      {att.file_name}
+                    </p>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Existing Confirm Attachments (read-only) */}
+        {existingAttachments.filter((a: any) => a.source === 'confirm').length > 0 && (
+          <div className="mt-6 rounded-lg bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <svg className="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              ไฟล์แนบจากการยืนยัน ({existingAttachments.filter((a: any) => a.source === 'confirm').length})
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {existingAttachments.filter((a: any) => a.source === 'confirm').map((att: any) => {
+                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name);
+                const isPdf = /\.pdf$/i.test(att.file_name);
+                return (
+                  <a
+                    key={att.id}
+                    href={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <div className="aspect-square rounded-lg overflow-hidden border-2 border-orange-200 group-hover:border-orange-400 transition bg-white flex items-center justify-center">
+                      {isImage ? (
+                        <img
+                          src={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                          alt={att.file_name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition"
+                        />
+                      ) : isPdf ? (
+                        <div className="flex flex-col items-center justify-center p-2 text-center">
+                          <svg className="h-10 w-10 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h2v5h-2v-5zm3 0h2v5h-2v-5zm-6 0h2v5H7v-5z"/>
+                          </svg>
+                          <span className="text-xs text-red-600 font-medium mt-1">PDF</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-2 text-center">
+                          <svg className="h-10 w-10 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-xs text-orange-600 font-medium mt-1">DOC</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-orange-600 mt-1 text-center truncate group-hover:text-orange-800" title={att.file_name}>
+                      {att.file_name}
+                    </p>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Upload Additional Files */}
+        <div className="mt-6 rounded-lg bg-white p-6 shadow-sm">
+          <h3 className="mb-4 text-lg font-semibold text-gray-800">แนบไฟล์เพิ่มเติม</h3>
+
+          <div className="mb-4">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.zip"
+              className="hidden"
+              id="confirm-file-upload"
+            />
+            <label
+              htmlFor="confirm-file-upload"
+              className="inline-flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
+            >
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="text-gray-600">เลือกไฟล์ที่ต้องการแนบ</span>
+            </label>
+            <p className="mt-2 text-xs text-gray-500">
+              รองรับไฟล์: PDF, Word, Excel, รูปภาพ, ZIP (ขนาดสูงสุด 50MB ต่อไฟล์)
+            </p>
+          </div>
+
+          {selectedFiles.length > 0 && (
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700">
+                ไฟล์ที่เลือก ({selectedFiles.length} ไฟล์)
+              </div>
+              <ul className="divide-y divide-gray-200">
+                {selectedFiles.map((sf) => (
+                  <li key={sf.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{sf.file.name}</p>
+                        <p className="text-xs text-gray-500">{formatFileSize(sf.file.size)}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFile(sf.id)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
         {/* Action Buttons */}
         <div className="mt-6 flex items-center justify-end gap-4">
           <button
@@ -413,7 +653,7 @@ export default function ConfirmGoodPage() {
             disabled={isSaving}
             className="rounded-lg bg-indigo-600 px-6 py-2 font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>

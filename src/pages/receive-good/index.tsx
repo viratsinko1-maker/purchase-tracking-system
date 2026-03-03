@@ -40,6 +40,7 @@ interface Attachment {
   file_size: number;
   file_type: string;
   uploaded_at: Date;
+  source?: string;
 }
 
 function ReceiveGoodListContent() {
@@ -717,9 +718,9 @@ function ReceiveGoodListContent() {
                       {/* Attachments */}
                       {group.batch_key && attachmentsMap[group.batch_key] && (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Documents */}
+                          {/* Documents (from warehouse) */}
                           {(() => {
-                            const docs = attachmentsMap[group.batch_key]?.filter(a => a.category === 'document') || [];
+                            const docs = attachmentsMap[group.batch_key]?.filter(a => a.category === 'document' && a.source !== 'confirm') || [];
                             if (docs.length === 0) return null;
                             return (
                               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 md:col-span-2">
@@ -775,9 +776,9 @@ function ReceiveGoodListContent() {
                             );
                           })()}
 
-                          {/* Photos */}
+                          {/* Photos (from warehouse) */}
                           {(() => {
-                            const photos = attachmentsMap[group.batch_key]?.filter(a => a.category === 'photo') || [];
+                            const photos = attachmentsMap[group.batch_key]?.filter(a => a.category === 'photo' && a.source !== 'confirm') || [];
                             if (photos.length === 0) return null;
                             return (
                               <div className="p-3 bg-green-50 rounded-lg border border-green-200 md:col-span-2">
@@ -806,6 +807,64 @@ function ReceiveGoodListContent() {
                                       <p className="text-xs text-green-700 mt-1 truncate text-center">{photo.file_name}</p>
                                     </a>
                                   ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Confirm Attachments */}
+                          {(() => {
+                            const confirmFiles = attachmentsMap[group.batch_key]?.filter(a => a.source === 'confirm') || [];
+                            if (confirmFiles.length === 0) return null;
+                            return (
+                              <div className="p-3 bg-orange-50 rounded-lg border border-orange-200 md:col-span-2">
+                                <p className="text-sm font-medium text-orange-800 mb-3 flex items-center gap-2">
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  ไฟล์แนบจากการยืนยัน ({confirmFiles.length})
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                  {confirmFiles.map(cf => {
+                                    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(cf.file_name);
+                                    const isPdf = /\.pdf$/i.test(cf.file_name);
+                                    return (
+                                      <a
+                                        key={cf.id}
+                                        href={`/api/serve-receive-attachment?path=${encodeURIComponent(cf.file_path)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block group"
+                                      >
+                                        <div className="aspect-square rounded-lg overflow-hidden border-2 border-orange-200 group-hover:border-orange-400 transition bg-white flex items-center justify-center">
+                                          {isImage ? (
+                                            <img
+                                              src={`/api/serve-receive-attachment?path=${encodeURIComponent(cf.file_path)}`}
+                                              alt={cf.file_name}
+                                              className="w-full h-full object-cover group-hover:scale-105 transition"
+                                            />
+                                          ) : isPdf ? (
+                                            <div className="flex flex-col items-center justify-center p-2 text-center">
+                                              <svg className="h-10 w-10 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h2v5h-2v-5zm3 0h2v5h-2v-5zm-6 0h2v5H7v-5z"/>
+                                              </svg>
+                                              <span className="text-xs text-red-600 font-medium mt-1">PDF</span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex flex-col items-center justify-center p-2 text-center">
+                                              <svg className="h-10 w-10 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                              </svg>
+                                              <span className="text-xs text-orange-600 font-medium mt-1">DOC</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-orange-600 mt-1 text-center truncate group-hover:text-orange-800" title={cf.file_name}>
+                                          {cf.file_name}
+                                        </p>
+                                      </a>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );

@@ -60,6 +60,7 @@ export default async function handler(
     const uploadedBy = fields.uploadedBy?.[0] || fields.uploadedBy || 'Unknown';
     const uploadedByUserId = fields.uploadedByUserId?.[0] || fields.uploadedByUserId || null;
     const category = fields.category?.[0] || fields.category || 'document'; // "document" or "photo"
+    const source = fields.source?.[0] || fields.source || 'warehouse'; // "warehouse" or "confirm"
 
     if (!prDocNum || !batchKey) {
       return res.status(400).json({ error: 'Missing prDocNum or batchKey' });
@@ -94,6 +95,7 @@ export default async function handler(
           file_type: file.mimetype || 'application/octet-stream',
           uploaded_by: uploadedBy,
           uploaded_by_user_id: uploadedByUserId,
+          source: source,
         },
       });
 

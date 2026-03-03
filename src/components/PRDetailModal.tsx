@@ -99,6 +99,7 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
 
   // State สำหรับ Receive Good Modal
   const [showReceiveGoodModal, setShowReceiveGoodModal] = useState(false);
+  const [receiveAttachmentsMap, setReceiveAttachmentsMap] = useState<Record<string, any[]>>({});
 
   // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
   const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
@@ -156,6 +157,19 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
     { search: String(prNo), limit: 100 },
     { enabled: isOpen && prNo > 0 }
   );
+
+  // Fetch receive good attachments when modal opens
+  useEffect(() => {
+    if (!showReceiveGoodModal || !receiveGoodData || receiveGoodData.length === 0) return;
+    const batchKeys = [...new Set(receiveGoodData.map((r: any) => r.batch_key).filter(Boolean))] as string[];
+    batchKeys.forEach(async (batchKey) => {
+      if (receiveAttachmentsMap[batchKey]) return;
+      try {
+        const attachments = await utils.pr.getAttachmentsByBatch.fetch({ batchKey });
+        setReceiveAttachmentsMap(prev => ({ ...prev, [batchKey]: attachments }));
+      } catch { /* ignore */ }
+    });
+  }, [showReceiveGoodModal, receiveGoodData]);
 
   // ดึง tracking ล่าสุด
   const latestTracking = trackingHistory && trackingHistory.length > 0 ? trackingHistory[0] : null;
@@ -1468,6 +1482,86 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                                 </tbody>
                               </table>
                             </div>
+
+                            {/* Batch Attachments */}
+                            {batch.batch_key && receiveAttachmentsMap[batch.batch_key] && receiveAttachmentsMap[batch.batch_key]!.length > 0 && (() => {
+                              const bk = batch.batch_key as string;
+                              const allAtts = receiveAttachmentsMap[bk]!;
+                              const warehouseAtts = allAtts.filter((a: any) => a.source !== 'confirm');
+                              const confirmAtts = allAtts.filter((a: any) => a.source === 'confirm');
+
+                              const renderGrid = (items: any[], borderColor: string, hoverColor: string, textColor: string) => (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                                  {items.map((att: any) => {
+                                    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name);
+                                    const isPdf = /\.pdf$/i.test(att.file_name);
+                                    return (
+                                      <a
+                                        key={att.id}
+                                        href={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block group"
+                                      >
+                                        <div className={`aspect-square rounded-lg overflow-hidden border-2 ${borderColor} group-hover:${hoverColor} transition bg-white flex items-center justify-center`}>
+                                          {isImage ? (
+                                            <img
+                                              src={`/api/serve-receive-attachment?path=${encodeURIComponent(att.file_path)}`}
+                                              alt={att.file_name}
+                                              className="w-full h-full object-cover group-hover:scale-105 transition"
+                                            />
+                                          ) : isPdf ? (
+                                            <div className="flex flex-col items-center p-1">
+                                              <svg className="h-8 w-8 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h2v5h-2v-5zm3 0h2v5h-2v-5zm-6 0h2v5H7v-5z"/>
+                                              </svg>
+                                              <span className="text-xs text-red-600 font-medium">PDF</span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex flex-col items-center p-1">
+                                              <svg className={`h-8 w-8 ${textColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                              </svg>
+                                              <span className={`text-xs font-medium ${textColor}`}>DOC</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <p className={`text-xs ${textColor} mt-1 text-center truncate`} title={att.file_name}>
+                                          {att.file_name}
+                                        </p>
+                                      </a>
+                                    );
+                                  })}
+                                </div>
+                              );
+
+                              return (
+                                <div className="border-t bg-gray-50 p-3 space-y-3">
+                                  {warehouseAtts.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-medium text-blue-700 mb-2 flex items-center gap-1">
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        ไฟล์แนบจาก Warehouse ({warehouseAtts.length})
+                                      </p>
+                                      {renderGrid(warehouseAtts, 'border-blue-200', 'border-blue-400', 'text-blue-600')}
+                                    </div>
+                                  )}
+                                  {confirmAtts.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        ไฟล์แนบจากการยืนยัน ({confirmAtts.length})
+                                      </p>
+                                      {renderGrid(confirmAtts, 'border-orange-200', 'border-orange-400', 'text-orange-600')}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}

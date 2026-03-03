@@ -734,6 +734,7 @@ model warehouse_receive_attachment {
   file_type           String   @db.VarChar(100)
   uploaded_by         String   @db.VarChar(255)
   uploaded_by_user_id String?  @db.VarChar(255)
+  source              String   @default("warehouse") @db.VarChar(20) // "warehouse" or "confirm"
   uploaded_at         DateTime @default(now()) @db.Timestamp(6)
   created_at          DateTime @default(now()) @db.Timestamp(6)
 
