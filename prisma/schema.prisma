@@ -308,6 +308,40 @@ model po_pr_wo_link {
   @@index([wo_no], map: "idx_po_pr_wo_link_wo_no")
 }
 
+model gr_po_pr {
+  id               Int       @id @default(autoincrement())
+  doc_date         DateTime? @db.Date
+  user_name        String?   @db.VarChar(255)
+  grpo_doc_num     String?   @db.VarChar(50)
+  card_code        String?   @db.VarChar(50)
+  card_name        String?   @db.VarChar(255)
+  po_doc_num       Int?
+  po_line_num      Int?
+  pr_base_ref      String?   @db.VarChar(50)
+  item_code        String?   @db.VarChar(100)
+  description      String?
+  quantity         Decimal?  @db.Decimal(19, 6)
+  unit_msr         String?   @db.VarChar(50)
+  price_before_disc Decimal? @db.Decimal(19, 6)
+  line_total       Decimal?  @db.Decimal(19, 6)
+  ocr_code         String?   @db.VarChar(50)
+  ocr_code2        String?   @db.VarChar(50)
+  ocr_code4        String?   @db.VarChar(50)
+  free_txt         String?
+  doc_entry        Int?
+  line_num         Int?
+  last_sync_date   DateTime? @default(now()) @db.Timestamp(6)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([doc_entry, line_num])
+  @@index([doc_date])
+  @@index([po_doc_num])
+  @@index([po_doc_num, po_line_num])
+  @@index([pr_base_ref])
+  @@index([grpo_doc_num])
+}
+
 model po_sync_log {
   id               Int       @id @default(autoincrement())
   sync_date        DateTime  @default(now()) @db.Timestamp(6)

@@ -130,7 +130,8 @@ export const prOverviewRouter = createTRPCRouter({
           (SELECT req_date FROM pr_master WHERE doc_num = s.doc_num) AS req_date,
           (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'waiting') AS receive_waiting,
           (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'confirmed') AS receive_confirmed,
-          (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'rejected') AS receive_rejected
+          (SELECT COUNT(*) FROM warehouse_receivegood WHERE pr_doc_num = s.doc_num AND confirm_status = 'rejected') AS receive_rejected,
+          (SELECT COUNT(DISTINCT pol.base_line) FROM gr_po_pr g JOIN po_lines pol ON g.po_doc_num = pol.po_doc_num AND g.po_line_num = pol.line_num WHERE g.pr_base_ref = s.doc_num::VARCHAR) AS gr_lines_received
         FROM mv_pr_summary s
         LEFT JOIN pr_document_receipt r ON s.doc_num = r.pr_doc_num
         LEFT JOIN pr_document_approval a ON s.doc_num = a.pr_doc_num
@@ -154,6 +155,7 @@ export const prOverviewRouter = createTRPCRouter({
         receive_waiting: row.receive_waiting ? Number(row.receive_waiting) : 0,
         receive_confirmed: row.receive_confirmed ? Number(row.receive_confirmed) : 0,
         receive_rejected: row.receive_rejected ? Number(row.receive_rejected) : 0,
+        gr_lines_received: row.gr_lines_received ? Number(row.gr_lines_received) : 0,
       }));
 
       return {
@@ -200,6 +202,15 @@ export const prOverviewRouter = createTRPCRouter({
         WHERE pol.base_ref = $1
         ORDER BY pol.po_doc_num, pol.line_num
       `, input.prNo) as any[];
+
+      // ดึง GR (ใบรับของ) ที่เชื่อมกับ PR นี้
+      const grLines = await ctx.db.$queryRawUnsafe<any[]>(`
+        SELECT grpo_doc_num, doc_date, user_name, card_name,
+               po_doc_num, po_line_num, item_code, description, quantity, unit_msr
+        FROM gr_po_pr
+        WHERE pr_base_ref = $1
+        ORDER BY doc_date DESC, grpo_doc_num
+      `, String(input.prNo));
 
       // ดึงข้อมูลโครงการจาก pr_project_link (เอาแค่ตัวแรก)
       const projectData = await ctx.db.pr_project_link.findFirst({
@@ -285,12 +296,49 @@ export const prOverviewRouter = createTRPCRouter({
           ocr_code4: line.ocr_code4,
           po_list: matchingPOs.map((po: any) => ({
             po_doc_num: po.po_doc_num,
+            po_line_num: po.po_line_num,
             po_due_date: po.po_due_date,
             po_description: po.po_description,
             po_quantity: po.po_quantity ? Number(po.po_quantity) : null,
             po_unit: null,
             po_status: po.po_status,
-          }))
+          })),
+          // Match GR ผ่าน PO chain
+          gr_list: (() => {
+            const grForLine: any[] = [];
+            matchingPOs.forEach((po: any) => {
+              grLines.forEach((gr: any) => {
+                // Priority 1: match po_doc_num + po_line_num
+                if (gr.po_doc_num != null && gr.po_line_num != null
+                  && gr.po_doc_num === po.po_doc_num && gr.po_line_num === po.po_line_num) {
+                  grForLine.push(gr);
+                }
+                // Priority 2: fallback po_doc_num + item_code (ถ้าไม่มี po_line_num)
+                else if (gr.po_line_num == null && gr.po_doc_num === po.po_doc_num
+                  && gr.item_code === po.po_item_code) {
+                  grForLine.push(gr);
+                }
+              });
+            });
+            // Deduplicate
+            const seen = new Set<string>();
+            return grForLine.filter(gr => {
+              const key = `${gr.grpo_doc_num}-${gr.po_doc_num}-${gr.po_line_num}-${gr.quantity}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            }).map(gr => ({
+              grpo_doc_num: gr.grpo_doc_num,
+              doc_date: gr.doc_date,
+              user_name: gr.user_name,
+              card_name: gr.card_name,
+              description: gr.description,
+              quantity: gr.quantity ? Number(gr.quantity) : null,
+              unit_msr: gr.unit_msr,
+              po_doc_num: gr.po_doc_num,
+              po_line_num: gr.po_line_num,
+            }));
+          })(),
         };
       });
 

@@ -8,6 +8,7 @@ import { activityTrailRouter } from "~/server/api/routers/activityTrail";
 import { wSeriesRouter } from "~/server/api/routers/w-series";
 import { kpiRouter } from "~/server/api/routers/kpi";
 import { notificationRouter } from "~/server/api/routers/notification";
+import { grpoRouter } from "~/server/api/routers/grpo";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
   wSeries: wSeriesRouter,  // W Series (WO, WR, WA, WC)
   kpi: kpiRouter,    // KPI Tracking (Approval & Receive Confirm)
   notification: notificationRouter,  // User Notifications (TopBar)
+  grpo: grpoRouter,  // GRPO (Goods Receipt PO) Sync from SAP
 });
 
 // export type definition of API

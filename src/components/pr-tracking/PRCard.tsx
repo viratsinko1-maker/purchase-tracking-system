@@ -52,6 +52,7 @@ interface PRData {
   receive_waiting?: number;
   receive_confirmed?: number;
   receive_rejected?: number;
+  gr_lines_received?: number;
 }
 
 interface PRCardProps {
@@ -148,6 +149,16 @@ export default function PRCard({
           )}
         </p>
 
+        {/* GR Count */}
+        {(pr.gr_lines_received ?? 0) > 0 && (
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            <span className="font-medium text-gray-700">ใบรับของ (GR):</span>
+            <span className="inline-flex items-center gap-0.5 rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 border border-emerald-200">
+              {pr.gr_lines_received}/{totalLines}
+            </span>
+          </div>
+        )}
+
         {/* Receive Good Status */}
         {(pr.receive_waiting || pr.receive_confirmed || pr.receive_rejected) ? (
           <div className="mt-1.5 flex items-center gap-2 text-xs">
@@ -230,23 +241,6 @@ export default function PRCard({
         )}
 
         <div className="mt-3 border-t border-gray-100 pt-3">
-          {/* Progress Bar - Questions */}
-          {tracking && tracking.total_questions > 0 && (
-            <div className="mb-2 hidden md:block">
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>คำถาม</span>
-                <span>{tracking.answered_questions}/{tracking.total_questions} ตอบแล้ว</span>
-              </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200 flex">
-                <div
-                  className="h-full bg-green-500 transition-all"
-                  style={{ width: `${(tracking.answered_questions / tracking.total_questions) * 100}%` }}
-                  title={`ตอบแล้ว: ${tracking.answered_questions} คำถาม`}
-                ></div>
-              </div>
-            </div>
-          )}
-
           {/* Stats */}
           <div className="flex items-center gap-3 text-xs flex-wrap">
             {/* Questions - Mobile Only */}
