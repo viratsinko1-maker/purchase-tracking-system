@@ -219,7 +219,7 @@ export default function TopBar() {
     if (item.prNo) {
       if (item.type === 'approval') {
         void router.push(`/pr-approval?prNo=${item.prNo}`);
-      } else if (item.type === 'approval_rejected' || item.type === 'qa_pending') {
+      } else if (item.type === 'approval_rejected' || item.type === 'qa_pending' || item.type === 'qa_answered') {
         void router.push(`/pr-tracking?prNo=${item.prNo}`);
       } else if (item.type === 'goods_ready') {
         void router.push(`/receive-good`);
