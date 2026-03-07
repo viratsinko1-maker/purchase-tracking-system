@@ -20,6 +20,8 @@ export default function PRDocumentReceiptModal({
   // State
   const [error, setError] = useState<string>('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [rejectStep, setRejectStep] = useState<'cost_center' | 'procurement' | 'vpc' | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const utils = api.useUtils();
 
@@ -40,6 +42,8 @@ export default function PRDocumentReceiptModal({
     if (isOpen) {
       setError('');
       setShowSuccess(false);
+      setRejectStep(null);
+      setRejectReason('');
     }
   }, [isOpen]);
 
@@ -64,6 +68,24 @@ export default function PRDocumentReceiptModal({
     onSuccess: async () => {
       await utils.pr.getDocumentReceipt.invalidate({ prNo });
       await refetchReceipt();
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 2000);
+    },
+    onError: (error) => {
+      setError(error.message);
+    },
+  });
+
+  // Mutation สำหรับปฏิเสธ (ขั้น 3, 4, 5)
+  const rejectApprovalMutation = api.pr.rejectApproval.useMutation({
+    onSuccess: async () => {
+      await utils.pr.getDocumentReceipt.invalidate({ prNo });
+      await utils.pr.getAllSummary.invalidate();
+      await refetchReceipt();
+      setRejectStep(null);
+      setRejectReason('');
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -104,6 +126,40 @@ export default function PRDocumentReceiptModal({
     });
   };
 
+  // Handle reject
+  const handleReject = (step: 'cost_center' | 'procurement' | 'vpc') => {
+    if (!user?.name) {
+      setError('กรุณาล็อกอินก่อน');
+      return;
+    }
+    if (step === 'cost_center') {
+      // Freeze ทันที ไม่ต้องใส่เหตุผล
+      rejectApprovalMutation.mutate({
+        prNo,
+        rejectionStep: step,
+        rejectedByName: user.name,
+        rejectedByUserId: user.id,
+        rejectedByRole: user.role || undefined,
+      });
+    } else {
+      // แสดง dialog ใส่เหตุผลสำหรับขั้น 4/5
+      setRejectStep(step);
+    }
+  };
+
+  // Confirm reject with reason (step 4/5)
+  const confirmReject = () => {
+    if (!rejectStep || !rejectReason.trim() || !user?.name) return;
+    rejectApprovalMutation.mutate({
+      prNo,
+      rejectionStep: rejectStep,
+      reason: rejectReason.trim(),
+      rejectedByName: user.name,
+      rejectedByUserId: user.id,
+      rejectedByRole: user.role || undefined,
+    });
+  };
+
   const formatDate = (date: Date | string | null) => {
     if (!date) return "-";
     return new Date(date).toLocaleDateString("th-TH", {
@@ -115,6 +171,11 @@ export default function PRDocumentReceiptModal({
 
   // 🔒 Sequential Approval Helper - ตรวจสอบว่าสามารถ approve ขั้นนี้ได้หรือยัง
   const canApproveStep = (step: 'requester' | 'line' | 'cost_center' | 'procurement' | 'vpc'): { allowed: boolean; reason?: string } => {
+    // Block all actions if frozen
+    if (existingReceipt?.rejection_status === 'frozen') {
+      return { allowed: false, reason: 'PR ถูก Freeze - ไม่สามารถอนุมัติได้' };
+    }
+
     const approvalOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'] as const;
     const approvalNames: Record<string, string> = {
       requester: 'ผู้ขอซื้อ',
@@ -141,6 +202,9 @@ export default function PRDocumentReceiptModal({
   };
 
   if (!isOpen) return null;
+
+  const isFrozen = existingReceipt?.rejection_status === 'frozen';
+  const isRejected = existingReceipt?.rejection_status === 'rejected';
 
   return (
     <>
@@ -245,7 +309,7 @@ export default function PRDocumentReceiptModal({
                         )}
 
                         {/* ปุ่มอนุมัติ - แสดงเมื่อยังไม่ได้อนุมัติ และผู้ใช้ล็อกอินแล้ว */}
-                        {!existingReceipt?.requester_approval_at && user?.name && (
+                        {!existingReceipt?.requester_approval_at && user?.name && !isFrozen && (
                           <div className="mt-2">
                             <button
                               type="button"
@@ -349,11 +413,36 @@ export default function PRDocumentReceiptModal({
                       </div>
 
                       {/* ผู้อนุมัติตาม Cost Center */}
-                      <div className="border rounded-md p-3 bg-green-50">
+                      <div className={`border rounded-md p-3 ${isFrozen ? 'bg-red-50 border-red-300' : 'bg-green-50'}`}>
                         <span className="text-sm font-medium text-gray-700">ผู้อนุมัติตาม Cost Center:</span>
 
+                        {/* แสดง Frozen status */}
+                        {isFrozen && (
+                          <div className="mt-2 p-2 bg-red-100 rounded text-sm space-y-1">
+                            <div>
+                              <span className="text-red-800 font-medium">❌ Frozen โดย: </span>
+                              <span className="font-medium text-red-900">{existingReceipt?.rejected_by}</span>
+                              <span className="ml-2 text-xs text-red-700">
+                                เมื่อ: {formatDate(existingReceipt?.rejected_at)}
+                              </span>
+                              {/* Admin clear button */}
+                              {user?.role === 'Admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleClearApproval('cost_center')}
+                                  disabled={clearApprovalMutation.isPending}
+                                  className="ml-3 rounded-md bg-red-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-600 transition disabled:bg-gray-400"
+                                >
+                                  {clearApprovalMutation.isPending ? 'กำลังล้าง...' : '🗑️ ล้าง (Unfreeze)'}
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-xs text-red-600">ไม่สามารถดำเนินการอนุมัติต่อได้ ต้องให้ Admin ล้างสถานะ</p>
+                          </div>
+                        )}
+
                         {/* แสดงสถานะการอนุมัติ - เมื่ออนุมัติแล้ว */}
-                        {existingReceipt?.cost_center_approval_at && (
+                        {!isFrozen && existingReceipt?.cost_center_approval_at && (
                           <div className="mt-2 p-2 bg-green-100 rounded text-sm">
                             <span className="text-green-800">✅ อนุมัติแล้วโดย: </span>
                             <span className="font-medium text-green-900">{existingReceipt.cost_center_approval_by}</span>
@@ -376,8 +465,8 @@ export default function PRDocumentReceiptModal({
                           </div>
                         )}
 
-                        {/* รายชื่อผู้อนุมัติ พร้อมปุ่มอนุมัติข้างๆ ชื่อตัวเอง */}
-                        {(() => {
+                        {/* รายชื่อผู้อนุมัติ พร้อมปุ่มอนุมัติ+ปฏิเสธ */}
+                        {!isFrozen && (() => {
                           const costCenterApprovers = approversPreview?.costCenterApprovers
                             ?? (existingReceipt?.cost_center_approvers as Array<{userId: string; username: string; email?: string; priority: number}> || []);
 
@@ -387,8 +476,6 @@ export default function PRDocumentReceiptModal({
                             <div className="mt-2 flex flex-wrap gap-2 items-center">
                               {costCenterApprovers.map((approver, idx) => {
                                 const isCurrentUser = approver.username === user?.name || approver.userId === user?.id;
-                                // Allow approve even without existingReceipt (auto-create) + sequential check
-                                const canApprove = !existingReceipt?.cost_center_approval_at && isCurrentUser && stepCheck.allowed;
 
                                 return (
                                   <div key={idx} className="flex items-center gap-1">
@@ -403,17 +490,27 @@ export default function PRDocumentReceiptModal({
                                       {approver.username}
                                       {isCurrentUser && ' (คุณ)'}
                                     </span>
-                                    {/* ปุ่มอนุมัติ - แสดงข้างๆ ชื่อตัวเอง */}
+                                    {/* ปุ่มอนุมัติ + ปฏิเสธ */}
                                     {!existingReceipt?.cost_center_approval_at && isCurrentUser && (
                                       stepCheck.allowed ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleIndividualApproval('cost_center')}
-                                          disabled={approveIndividualMutation.isPending}
-                                          className="rounded-md bg-amber-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-600 transition disabled:bg-gray-400"
-                                        >
-                                          {approveIndividualMutation.isPending ? '...' : 'กดเพื่ออนุมัติ'}
-                                        </button>
+                                        <div className="flex gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleIndividualApproval('cost_center')}
+                                            disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
+                                            className="rounded-md bg-amber-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-600 transition disabled:bg-gray-400"
+                                          >
+                                            {approveIndividualMutation.isPending ? '...' : 'อนุมัติ'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReject('cost_center')}
+                                            disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
+                                            className="rounded-md bg-red-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-600 transition disabled:bg-gray-400"
+                                          >
+                                            {rejectApprovalMutation.isPending ? '...' : 'ปฏิเสธ'}
+                                          </button>
+                                        </div>
                                       ) : (
                                         <span className="text-xs text-orange-600 ml-1" title={stepCheck.reason}>
                                           🔒 {stepCheck.reason}
@@ -459,18 +556,26 @@ export default function PRDocumentReceiptModal({
                           </div>
                         )}
 
-                        {/* ปุ่มอนุมัติ - แสดงเมื่อยังไม่ได้อนุมัติ และเป็น Manager */}
+                        {/* ปุ่มอนุมัติ + ปฏิเสธ - แสดงเมื่อยังไม่ได้อนุมัติ และเป็น Manager */}
                         {!existingReceipt?.procurement_approval_at && user?.role === 'Manager' && (() => {
                           const stepCheck = canApproveStep('procurement');
                           return stepCheck.allowed ? (
-                            <div className="mt-2">
+                            <div className="mt-2 flex gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleIndividualApproval('procurement')}
-                                disabled={approveIndividualMutation.isPending}
+                                disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
                                 className="rounded-md bg-orange-500 px-3 py-1 text-sm font-medium text-white hover:bg-orange-600 transition disabled:bg-gray-400"
                               >
                                 {approveIndividualMutation.isPending ? 'กำลังอนุมัติ...' : 'กดเพื่ออนุมัติ'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject('procurement')}
+                                disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
+                                className="rounded-md bg-red-500 px-3 py-1 text-sm font-medium text-white hover:bg-red-600 transition disabled:bg-gray-400"
+                              >
+                                {rejectApprovalMutation.isPending ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
                               </button>
                             </div>
                           ) : (
@@ -484,6 +589,55 @@ export default function PRDocumentReceiptModal({
                         {!existingReceipt?.procurement_approval_at && user?.role !== 'Manager' && (
                           <div className="mt-2 text-sm text-gray-500">
                             รอการอนุมัติจาก Manager
+                          </div>
+                        )}
+
+                        {/* ช่องพิมพ์เหตุผลปฏิเสธ - ขั้น 4 */}
+                        {rejectStep === 'procurement' && (
+                          <div className="mt-2 rounded-md bg-red-50 border border-red-300 p-3 space-y-2">
+                            <h4 className="text-sm font-semibold text-red-800">
+                              ยืนยันการปฏิเสธ PR #{prNo} (งานจัดซื้อพัสดุ)
+                            </h4>
+                            <p className="text-xs text-red-600">การอนุมัติทุกขั้นจะถูกล้าง และจะแจ้งผู้เปิด PR</p>
+                            <textarea
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="กรุณาระบุเหตุผลในการปฏิเสธ..."
+                              className="w-full rounded-md border border-red-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={confirmReject}
+                                disabled={!rejectReason.trim() || rejectApprovalMutation.isPending}
+                                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition disabled:bg-gray-400"
+                              >
+                                {rejectApprovalMutation.isPending ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธ'}
+                              </button>
+                              <button
+                                onClick={() => { setRejectStep(null); setRejectReason(''); }}
+                                className="rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-300 transition"
+                              >
+                                ยกเลิก
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* แสดงเหตุผลการปฏิเสธ - ขั้น 4 */}
+                        {isRejected && existingReceipt?.rejection_step === 4 && (
+                          <div className="mt-2 p-2 bg-red-100 rounded text-sm space-y-1">
+                            <div>
+                              <span className="text-red-800 font-medium">❌ ปฏิเสธโดย: </span>
+                              <span className="font-medium text-red-900">{existingReceipt?.rejected_by}</span>
+                              <span className="ml-2 text-xs text-red-700">
+                                เมื่อ: {formatDate(existingReceipt?.rejected_at)}
+                              </span>
+                            </div>
+                            {existingReceipt?.rejection_reason && (
+                              <p className="text-xs text-red-700">เหตุผล: {existingReceipt.rejection_reason}</p>
+                            )}
+                            <p className="text-xs text-red-600">การอนุมัติทั้งหมดถูกล้าง - กรุณาเริ่มกระบวนการอนุมัติใหม่</p>
                           </div>
                         )}
                       </div>
@@ -517,18 +671,26 @@ export default function PRDocumentReceiptModal({
                           </div>
                         )}
 
-                        {/* ปุ่มอนุมัติ - แสดงเมื่อยังไม่ได้อนุมัติ และเป็น Approval */}
+                        {/* ปุ่มอนุมัติ + ปฏิเสธ - แสดงเมื่อยังไม่ได้อนุมัติ และเป็น Approval */}
                         {!existingReceipt?.vpc_approval_at && user?.role === 'Approval' && (() => {
                           const stepCheck = canApproveStep('vpc');
                           return stepCheck.allowed ? (
-                            <div className="mt-2">
+                            <div className="mt-2 flex gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleIndividualApproval('vpc')}
-                                disabled={approveIndividualMutation.isPending}
+                                disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
                                 className="rounded-md bg-indigo-500 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-600 transition disabled:bg-gray-400"
                               >
                                 {approveIndividualMutation.isPending ? 'กำลังอนุมัติ...' : 'กดเพื่ออนุมัติ'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject('vpc')}
+                                disabled={approveIndividualMutation.isPending || rejectApprovalMutation.isPending}
+                                className="rounded-md bg-red-500 px-3 py-1 text-sm font-medium text-white hover:bg-red-600 transition disabled:bg-gray-400"
+                              >
+                                {rejectApprovalMutation.isPending ? 'กำลังปฏิเสธ...' : 'ปฏิเสธ'}
                               </button>
                             </div>
                           ) : (
@@ -542,6 +704,55 @@ export default function PRDocumentReceiptModal({
                         {!existingReceipt?.vpc_approval_at && user?.role !== 'Approval' && (
                           <div className="mt-2 text-sm text-gray-500">
                             รอการอนุมัติจาก Approval (VP-C)
+                          </div>
+                        )}
+
+                        {/* ช่องพิมพ์เหตุผลปฏิเสธ - ขั้น 5 */}
+                        {rejectStep === 'vpc' && (
+                          <div className="mt-2 rounded-md bg-red-50 border border-red-300 p-3 space-y-2">
+                            <h4 className="text-sm font-semibold text-red-800">
+                              ยืนยันการปฏิเสธ PR #{prNo} (VP-C)
+                            </h4>
+                            <p className="text-xs text-red-600">การอนุมัติทุกขั้นจะถูกล้าง และจะแจ้งผู้เปิด PR</p>
+                            <textarea
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="กรุณาระบุเหตุผลในการปฏิเสธ..."
+                              className="w-full rounded-md border border-red-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={confirmReject}
+                                disabled={!rejectReason.trim() || rejectApprovalMutation.isPending}
+                                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition disabled:bg-gray-400"
+                              >
+                                {rejectApprovalMutation.isPending ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธ'}
+                              </button>
+                              <button
+                                onClick={() => { setRejectStep(null); setRejectReason(''); }}
+                                className="rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-300 transition"
+                              >
+                                ยกเลิก
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* แสดงเหตุผลการปฏิเสธ - ขั้น 5 */}
+                        {isRejected && existingReceipt?.rejection_step === 5 && (
+                          <div className="mt-2 p-2 bg-red-100 rounded text-sm space-y-1">
+                            <div>
+                              <span className="text-red-800 font-medium">❌ ปฏิเสธโดย: </span>
+                              <span className="font-medium text-red-900">{existingReceipt?.rejected_by}</span>
+                              <span className="ml-2 text-xs text-red-700">
+                                เมื่อ: {formatDate(existingReceipt?.rejected_at)}
+                              </span>
+                            </div>
+                            {existingReceipt?.rejection_reason && (
+                              <p className="text-xs text-red-700">เหตุผล: {existingReceipt.rejection_reason}</p>
+                            )}
+                            <p className="text-xs text-red-600">การอนุมัติทั้งหมดถูกล้าง - กรุณาเริ่มกระบวนการอนุมัติใหม่</p>
                           </div>
                         )}
                       </div>

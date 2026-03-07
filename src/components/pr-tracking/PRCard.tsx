@@ -47,6 +47,12 @@ interface PRData {
   procurement_approval_by?: string | null;
   vpc_approval_at?: string | null;
   vpc_approval_by?: string | null;
+  // Rejection fields
+  rejection_status?: string | null;
+  rejection_step?: number | null;
+  rejection_reason?: string | null;
+  rejected_by?: string | null;
+  rejected_at?: string | null;
   po_numbers?: number[];
   wo_numbers_arr?: number[];
   receive_waiting?: number;
@@ -121,6 +127,18 @@ export default function PRCard({
           {tracking && (
             <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium border ${getUrgencyStyle(tracking.urgency_level)}`}>
               {tracking.urgency_level}
+            </span>
+          )}
+
+          {/* Rejection Status Badge */}
+          {pr.rejection_status === 'frozen' && (
+            <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 border border-blue-300">
+              Frozen
+            </span>
+          )}
+          {pr.rejection_status === 'rejected' && (
+            <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-800 border border-red-300">
+              Rejected
             </span>
           )}
 
@@ -338,10 +356,20 @@ export default function PRCard({
                 )}
               </div>
               {/* 3. Cost Center Approval */}
-              <div className={`flex items-center gap-1 px-2 py-1 rounded ${pr.cost_center_approval_at ? 'text-green-700 bg-green-50' : 'text-gray-500 bg-gray-50'}`}>
-                <span className={pr.cost_center_approval_at ? 'text-green-600' : 'text-gray-400'}>{pr.cost_center_approval_at ? '✓' : '○'}</span>
+              <div className={`flex items-center gap-1 px-2 py-1 rounded ${
+                pr.rejection_status === 'frozen' ? 'text-red-700 bg-red-50' :
+                pr.cost_center_approval_at ? 'text-green-700 bg-green-50' : 'text-gray-500 bg-gray-50'
+              }`}>
+                <span className={
+                  pr.rejection_status === 'frozen' ? 'text-red-600' :
+                  pr.cost_center_approval_at ? 'text-green-600' : 'text-gray-400'
+                }>
+                  {pr.rejection_status === 'frozen' ? '✕' : pr.cost_center_approval_at ? '✓' : '○'}
+                </span>
                 <span className="font-medium">Cost Center:</span>
-                {pr.cost_center_approval_at ? (
+                {pr.rejection_status === 'frozen' ? (
+                  <span className="text-red-600">Frozen{pr.rejected_by ? ` โดย ${pr.rejected_by}` : ''}</span>
+                ) : pr.cost_center_approval_at ? (
                   <>
                     <span>{pr.cost_center_approval_by}</span>
                     <span className="text-gray-500">
@@ -355,10 +383,20 @@ export default function PRCard({
                 )}
               </div>
               {/* 4. Procurement Approval */}
-              <div className={`flex items-center gap-1 px-2 py-1 rounded ${pr.procurement_approval_at ? 'text-orange-700 bg-orange-50' : 'text-gray-500 bg-gray-50'}`}>
-                <span className={pr.procurement_approval_at ? 'text-green-600' : 'text-gray-400'}>{pr.procurement_approval_at ? '✓' : '○'}</span>
+              <div className={`flex items-center gap-1 px-2 py-1 rounded ${
+                pr.rejection_status === 'rejected' && pr.rejection_step === 4 ? 'text-red-700 bg-red-50' :
+                pr.procurement_approval_at ? 'text-orange-700 bg-orange-50' : 'text-gray-500 bg-gray-50'
+              }`}>
+                <span className={
+                  pr.rejection_status === 'rejected' && pr.rejection_step === 4 ? 'text-red-600' :
+                  pr.procurement_approval_at ? 'text-green-600' : 'text-gray-400'
+                }>
+                  {pr.rejection_status === 'rejected' && pr.rejection_step === 4 ? '✕' : pr.procurement_approval_at ? '✓' : '○'}
+                </span>
                 <span className="font-medium">จัดซื้อ:</span>
-                {pr.procurement_approval_at ? (
+                {pr.rejection_status === 'rejected' && pr.rejection_step === 4 ? (
+                  <span className="text-red-600">ปฏิเสธ{pr.rejected_by ? ` โดย ${pr.rejected_by}` : ''}</span>
+                ) : pr.procurement_approval_at ? (
                   <>
                     <span>{pr.procurement_approval_by}</span>
                     <span className="text-gray-500">
@@ -372,10 +410,20 @@ export default function PRCard({
                 )}
               </div>
               {/* 5. VPC Approval */}
-              <div className={`flex items-center gap-1 px-2 py-1 rounded ${pr.vpc_approval_at ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 bg-gray-50'}`}>
-                <span className={pr.vpc_approval_at ? 'text-green-600' : 'text-gray-400'}>{pr.vpc_approval_at ? '✓' : '○'}</span>
+              <div className={`flex items-center gap-1 px-2 py-1 rounded ${
+                pr.rejection_status === 'rejected' && pr.rejection_step === 5 ? 'text-red-700 bg-red-50' :
+                pr.vpc_approval_at ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 bg-gray-50'
+              }`}>
+                <span className={
+                  pr.rejection_status === 'rejected' && pr.rejection_step === 5 ? 'text-red-600' :
+                  pr.vpc_approval_at ? 'text-green-600' : 'text-gray-400'
+                }>
+                  {pr.rejection_status === 'rejected' && pr.rejection_step === 5 ? '✕' : pr.vpc_approval_at ? '✓' : '○'}
+                </span>
                 <span className="font-medium">VP-C:</span>
-                {pr.vpc_approval_at ? (
+                {pr.rejection_status === 'rejected' && pr.rejection_step === 5 ? (
+                  <span className="text-red-600">ปฏิเสธ{pr.rejected_by ? ` โดย ${pr.rejected_by}` : ''}</span>
+                ) : pr.vpc_approval_at ? (
                   <>
                     <span>{pr.vpc_approval_by}</span>
                     <span className="text-gray-500">

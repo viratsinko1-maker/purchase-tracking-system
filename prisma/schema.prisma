@@ -431,6 +431,14 @@ model pr_document_receipt {
   vpc_approval_by                 String?   @db.VarChar(255)
   vpc_approval_by_user_id         String?   @db.VarChar(255)
 
+  // Rejection fields
+  rejection_status                String?   @db.VarChar(20)   // "frozen" (step 3) | "rejected" (step 4/5) | null
+  rejection_step                  Int?                          // 3, 4, or 5
+  rejection_reason                String?
+  rejected_by                     String?   @db.VarChar(255)
+  rejected_by_user_id             String?   @db.VarChar(255)
+  rejected_at                     DateTime?
+
   @@index([pr_doc_num], map: "idx_pr_document_receipt_pr_doc_num")
   @@index([receipt_date], map: "idx_pr_document_receipt_receipt_date")
   @@index([received_by_user_id], map: "idx_pr_document_receipt_user_id")

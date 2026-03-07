@@ -93,6 +93,7 @@ export const prOverviewRouter = createTRPCRouter({
           r.cost_center_approval_by, r.cost_center_approval_at,
           r.procurement_approval_by, r.procurement_approval_at,
           r.vpc_approval_by, r.vpc_approval_at,
+          r.rejection_status, r.rejection_step, r.rejection_reason, r.rejected_by, r.rejected_at,
           a.approval_status, a.reason as approval_reason, a.approved_by, a.approved_at,
           (
             SELECT ocr_code2 FROM (
