@@ -35,15 +35,15 @@ export default async function handler(
         // Windows: file://10.1.1.199/... → \\10.1.1.199\...
         uncPath = uncPath.replace('file://', '\\\\').replace(/\//g, '\\');
       } else {
-        // Linux/Docker: file://10.1.1.199/b1_shr/... → /mnt/b1_shr/...
-        uncPath = uncPath.replace('file://10.1.1.199/b1_shr', '/mnt/b1_shr');
+        // Linux/Docker: file://10.1.1.199/b1_shr/... → /app/sap-attachments/...
+        uncPath = uncPath.replace('file://10.1.1.199/b1_shr', '/app/sap-attachments');
       }
     }
     else if (uncPath.startsWith('//')) {
       if (process.platform === 'win32') {
         uncPath = uncPath.replace('//', '\\\\').replace(/\//g, '\\');
       } else {
-        uncPath = uncPath.replace('//10.1.1.199/b1_shr', '/mnt/b1_shr');
+        uncPath = uncPath.replace('//10.1.1.199/b1_shr', '/app/sap-attachments');
       }
     }
 
