@@ -11,8 +11,10 @@ export const config = {
   },
 };
 
-// Network share path for storing receive good attachments
-const UPLOAD_DIR = '\\\\192.168.1.3\\AttachmentPD\\ReciveGood_Warehouse_attach';
+// Upload directory from env, fallback to local ./uploads/AttachmentPD
+const UPLOAD_DIR = process.env.UPLOAD_ATTACHMENT_DIR
+  ? path.resolve(process.env.UPLOAD_ATTACHMENT_DIR, 'ReciveGood_Warehouse_attach')
+  : path.resolve(process.cwd(), 'uploads', 'AttachmentPD', 'ReciveGood_Warehouse_attach');
 
 function ensureUploadDir() {
   if (!fs.existsSync(UPLOAD_DIR)) {
@@ -90,7 +92,7 @@ export default async function handler(
           batch_key: batchKey,
           category: category,
           file_name: file.originalFilename || 'unknown',
-          file_path: `\\\\192.168.1.3\\AttachmentPD\\ReciveGood_Warehouse_attach\\${uniqueName}`,
+          file_path: path.join(UPLOAD_DIR, uniqueName),
           file_size: file.size || 0,
           file_type: file.mimetype || 'application/octet-stream',
           uploaded_by: uploadedBy,

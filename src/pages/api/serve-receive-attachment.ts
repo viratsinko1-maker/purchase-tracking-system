@@ -2,8 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs';
 import path from 'path';
 
-// Network share base path for receive good attachments
-const NETWORK_SHARE_PATH = '\\\\192.168.1.3\\AttachmentPD\\ReciveGood_Warehouse_attach';
+// Upload directory from env, fallback to local ./uploads/AttachmentPD
+const UPLOAD_BASE_DIR = process.env.UPLOAD_ATTACHMENT_DIR
+  ? path.resolve(process.env.UPLOAD_ATTACHMENT_DIR, 'ReciveGood_Warehouse_attach')
+  : path.resolve(process.cwd(), 'uploads', 'AttachmentPD', 'ReciveGood_Warehouse_attach');
 
 /**
  * API Route สำหรับ serve ไฟล์จาก network share
@@ -23,26 +25,15 @@ export default async function handler(
       return res.status(400).json({ error: 'Missing file path parameter' });
     }
 
-    let fullPath: string;
+    // Resolve the requested path
+    const resolvedPath = path.resolve(filePath);
 
-    // Check if it's a network share path
-    if (filePath.startsWith('\\\\')) {
-      // Ensure path is within allowed network share
-      if (!filePath.startsWith(NETWORK_SHARE_PATH)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      fullPath = filePath;
-    } else {
-      // Legacy local path - sanitize and resolve
-      const sanitizedPath = filePath.replace(/\.\./g, '').replace(/^\/+/, '');
-      fullPath = path.join(process.cwd(), sanitizedPath);
-
-      // Ensure path is within uploads directory
-      const uploadsDir = path.join(process.cwd(), 'uploads');
-      if (!fullPath.startsWith(uploadsDir)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    // Security: ensure path is within allowed upload directory (prevent path traversal)
+    if (!resolvedPath.startsWith(UPLOAD_BASE_DIR)) {
+      return res.status(403).json({ error: 'Access denied' });
     }
+
+    const fullPath = resolvedPath;
 
     // Check if file exists
     if (!fs.existsSync(fullPath)) {
