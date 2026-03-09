@@ -20,6 +20,7 @@ services:
     volumes:
       - D:\www\uploads\prpo:/app/uploads
       - D:\www\logs\prpo-app:/app/logs
+      - sap_attachments:/app/sap-attachments:ro
     networks:
       - app-network
       - tmk-shared-network
@@ -48,3 +49,14 @@ networks:
     driver: bridge
   tmk-shared-network:
     external: true
+    # ─── Volume Configuration (เพิ่มส่วนนี้) ──────────────────────────────────────
+volumes:
+  sap_attachments:
+    driver: local
+    driver_opts:
+      type: cifs
+      # ใช้เครื่องหมาย / แทน \ สำหรับที่อยู่ไอพี
+      device: "//10.1.1.199/b1_shr"
+      # ใส่ username (xxx) และ password (yyy) ของคุณตรงนี้
+      # vers=3.0 คือมาตรฐานความปลอดภัยปัจจุบัน, ro คืออ่านอย่างเดียว
+      o: "username=B1admin,password=On33rp,vers=3.0,ro"
