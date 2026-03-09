@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { createTRPCRouter, createTableProcedure, authenticatedProcedure } from "~/server/api/trpc";
-import { sendCustomNotification } from "~/server/services/telegram";
+import { sendCustomNotification, sendTelegramMessageToUser } from "~/server/services/telegram";
 import { createAuditLog, AuditAction, getIpFromContext } from "~/server/api/utils/auditLog";
 import { checkTablePermission } from "~/lib/check-permission";
 import type { PermissionAction } from "~/lib/permissions";
@@ -203,6 +203,17 @@ export const prApprovalRouter = createTRPCRouter({
         }
       }
 
+      // Freeze guard: block approvals on frozen PRs
+      if (receipt.rejection_status === 'frozen') {
+        throw new Error('PR นี้ถูก Freeze โดย Cost Center - ไม่สามารถอนุมัติต่อได้');
+      }
+
+      // Clear rejection state when re-approving after step 4/5 rejection
+      let clearRejectionOnApprove = false;
+      if (receipt.rejection_status === 'rejected' && input.approvalType === 'requester') {
+        clearRejectionOnApprove = true;
+      }
+
       // Sequential approval validation
       const approvalOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'] as const;
       const approvalNames: Record<string, string> = {
@@ -273,9 +284,23 @@ export const prApprovalRouter = createTRPCRouter({
         },
       };
 
+      // Merge rejection clearing data if re-approving after rejection
+      let finalUpdateData = updateDataMap[input.approvalType]!;
+      if (clearRejectionOnApprove) {
+        finalUpdateData = {
+          ...finalUpdateData,
+          rejection_status: null,
+          rejection_step: null,
+          rejection_reason: null,
+          rejected_by: null,
+          rejected_by_user_id: null,
+          rejected_at: null,
+        };
+      }
+
       const updated = await ctx.db.pr_document_receipt.update({
         where: { pr_doc_num: input.prNo },
-        data: updateDataMap[input.approvalType]!,
+        data: finalUpdateData,
       });
 
       // 🔹 KPI Tracking: บันทึก approval KPI metric
@@ -443,7 +468,16 @@ export const prApprovalRouter = createTRPCRouter({
       const approvalOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'] as const;
       const targetIndex = approvalOrder.indexOf(input.approvalType);
 
-      let combinedClearData: Record<string, unknown> = { updated_at: now };
+      let combinedClearData: Record<string, unknown> = {
+        updated_at: now,
+        // Always clear rejection fields when Admin clears (unfreeze/unreject)
+        rejection_status: null,
+        rejection_step: null,
+        rejection_reason: null,
+        rejected_by: null,
+        rejected_by_user_id: null,
+        rejected_at: null,
+      };
 
       for (let i = targetIndex; i < approvalOrder.length; i++) {
         const stage = approvalOrder[i]!;
@@ -541,6 +575,278 @@ export const prApprovalRouter = createTRPCRouter({
       };
     }),
 
+  // 🔹 ปฏิเสธการอนุมัติ (ขั้น 3: Freeze, ขั้น 4/5: Clear ทั้งหมด + แจ้งผู้เปิด)
+  rejectApproval: authenticatedProcedure
+    .input(z.object({
+      prNo: z.number(),
+      rejectionStep: z.enum(['cost_center', 'procurement', 'vpc']),
+      reason: z.string().optional(),
+      rejectedByName: z.string(),
+      rejectedByUserId: z.string().optional(),
+      rejectedByRole: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Validate reason required for step 4/5
+      if ((input.rejectionStep === 'procurement' || input.rejectionStep === 'vpc') && !input.reason?.trim()) {
+        throw new Error('กรุณาระบุเหตุผลในการปฏิเสธ');
+      }
+
+      const receipt = await ctx.db.pr_document_receipt.findUnique({
+        where: { pr_doc_num: input.prNo },
+      });
+
+      if (!receipt) {
+        throw new Error('ไม่พบข้อมูลการรับเอกสาร');
+      }
+
+      // Check not already rejected/frozen
+      if (receipt.rejection_status) {
+        throw new Error('PR นี้ถูกปฏิเสธหรือ Freeze ไปแล้ว');
+      }
+
+      // Permission check (same as approve)
+      const permissionConfig = APPROVAL_PERMISSION_MAP[input.rejectionStep];
+      if (!permissionConfig) {
+        throw new Error('Invalid rejection step');
+      }
+
+      const permissionResult = await checkTablePermission(ctx.db, {
+        tableName: permissionConfig.tableName,
+        action: permissionConfig.action,
+        userId: input.rejectedByUserId || '',
+        userRole: input.rejectedByRole || '',
+      });
+
+      if (!permissionResult.allowed) {
+        throw new Error(`คุณไม่มีสิทธิ์ปฏิเสธในขั้นนี้`);
+      }
+
+      // For cost_center, check ocr_approver list (same as approve)
+      if (input.rejectionStep === 'cost_center') {
+        let isInApproverList = false;
+
+        if (receipt.ocr_code2) {
+          const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
+            where: { name: receipt.ocr_code2 },
+          });
+
+          if (ocrCode) {
+            const liveApprovers = await ctx.db.ocr_approver.findMany({
+              where: { ocrCodeId: ocrCode.id, approverType: 'cost_center' },
+            });
+
+            isInApproverList = liveApprovers.some(
+              approver => approver.userProductionId === input.rejectedByUserId
+            );
+
+            if (!isInApproverList) {
+              const approverUserIds = liveApprovers.map(a => a.userProductionId);
+              const approverUsers = await ctx.db.user_production.findMany({
+                where: { id: { in: approverUserIds } },
+                select: { id: true, username: true, name: true },
+              });
+              isInApproverList = approverUsers.some(
+                u => u.username === input.rejectedByName || u.name === input.rejectedByName
+              );
+            }
+          }
+        }
+
+        if (!isInApproverList) {
+          throw new Error('คุณไม่ได้อยู่ในรายชื่อผู้อนุมัติตาม Cost Center ของ PR นี้');
+        }
+      }
+
+      // Sequential validation: reject ได้เฉพาะขั้นที่เป็น pending (ขั้นก่อนหน้า approve แล้ว + ขั้นปัจจุบันยังไม่ approve)
+      const approvalOrder = ['requester', 'line', 'cost_center', 'procurement', 'vpc'] as const;
+      const approvalNames: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
+        line: 'ผู้อนุมัติตามสายงาน',
+        cost_center: 'ผู้อนุมัติตาม Cost Center',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      const currentIndex = approvalOrder.indexOf(input.rejectionStep);
+
+      // Check all previous steps are approved
+      for (let i = 0; i < currentIndex; i++) {
+        const prevType = approvalOrder[i]!;
+        const prevApprovalField = `${prevType}_approval_at` as keyof typeof receipt;
+        if (!receipt[prevApprovalField]) {
+          throw new Error(`ต้อง approve ${approvalNames[prevType]} ก่อนจึงจะปฏิเสธขั้นนี้ได้`);
+        }
+      }
+
+      // Check current step is NOT already approved
+      const currentApprovalField = `${input.rejectionStep}_approval_at` as keyof typeof receipt;
+      if (receipt[currentApprovalField]) {
+        throw new Error(`ขั้นนี้ถูกอนุมัติไปแล้ว ไม่สามารถปฏิเสธได้`);
+      }
+
+      const now = new Date();
+      const stepNumber = input.rejectionStep === 'cost_center' ? 3
+                       : input.rejectionStep === 'procurement' ? 4 : 5;
+
+      let updateData: Record<string, unknown> = {
+        rejection_status: stepNumber === 3 ? 'frozen' : 'rejected',
+        rejection_step: stepNumber,
+        rejection_reason: input.reason?.trim() || null,
+        rejected_by: input.rejectedByName,
+        rejected_by_user_id: input.rejectedByUserId || null,
+        rejected_at: now,
+        updated_at: now,
+      };
+
+      // Step 4/5: Clear ALL approvals (cascade from step 1) + refresh snapshot
+      if (input.rejectionStep === 'procurement' || input.rejectionStep === 'vpc') {
+        const clearData: Record<string, null> = {
+          requester_approval_by: null,
+          requester_approval_by_user_id: null,
+          requester_approval_at: null,
+          line_approval_by: null,
+          line_approval_by_user_id: null,
+          line_approval_at: null,
+          cost_center_approval_by: null,
+          cost_center_approval_by_user_id: null,
+          cost_center_approval_at: null,
+          procurement_approval_by: null,
+          procurement_approval_by_user_id: null,
+          procurement_approval_at: null,
+          vpc_approval_by: null,
+          vpc_approval_by_user_id: null,
+          vpc_approval_at: null,
+        };
+        updateData = { ...updateData, ...clearData };
+
+        // Refresh approver snapshot (same pattern as clearIndividualApproval)
+        if (receipt.ocr_code2) {
+          const ocrCode = await ctx.db.ocr_code_and_name.findFirst({
+            where: { name: receipt.ocr_code2 },
+          });
+
+          if (ocrCode) {
+            const approvers = await ctx.db.ocr_approver.findMany({
+              where: { ocrCodeId: ocrCode.id },
+              orderBy: [{ approverType: 'asc' }, { priority: 'asc' }],
+            });
+
+            const userIds = approvers.map(a => a.userProductionId);
+            const users = await ctx.db.user_production.findMany({
+              where: { id: { in: userIds } },
+              select: { id: true, email: true, username: true, name: true },
+            });
+
+            const newLineApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+            const newCostCenterApprovers: { userId: string; username: string; email?: string; priority: number }[] = [];
+
+            for (const approver of approvers) {
+              const user = users.find(u => u.id === approver.userProductionId);
+              const approverData = {
+                userId: approver.userProductionId,
+                username: user?.username || user?.name || user?.email || 'Unknown',
+                email: user?.email || undefined,
+                priority: approver.priority,
+              };
+
+              if (approver.approverType === 'line') {
+                newLineApprovers.push(approverData);
+              } else if (approver.approverType === 'cost_center') {
+                newCostCenterApprovers.push(approverData);
+              }
+            }
+
+            updateData.line_approvers = newLineApprovers.length > 0 ? newLineApprovers : Prisma.JsonNull;
+            updateData.cost_center_approvers = newCostCenterApprovers.length > 0 ? newCostCenterApprovers : Prisma.JsonNull;
+          }
+        }
+      }
+
+      const updated = await ctx.db.pr_document_receipt.update({
+        where: { pr_doc_num: input.prNo },
+        data: updateData,
+      });
+
+      // Notification for step 4/5: send to PR requester
+      if (input.rejectionStep === 'procurement' || input.rejectionStep === 'vpc') {
+        try {
+          const prMaster = await ctx.db.pr_master.findUnique({
+            where: { doc_num: input.prNo },
+            select: { req_name: true, job_name: true },
+          });
+
+          if (prMaster?.req_name) {
+            const requesterUser = await ctx.db.user_production.findFirst({
+              where: { linked_req_name: prMaster.req_name, isActive: true },
+              select: { id: true, name: true, telegramChatId: true },
+            });
+
+            if (requesterUser) {
+              const stepLabel = input.rejectionStep === 'procurement' ? 'งานจัดซื้อพัสดุ (ขั้น 4)' : 'VP-C (ขั้น 5)';
+
+              // In-app notification
+              await ctx.db.user_notification.create({
+                data: {
+                  user_id: requesterUser.id,
+                  type: 'approval_rejected',
+                  title: `PR #${input.prNo} - ถูกปฏิเสธ`,
+                  message: `PR ถูกปฏิเสธโดย ${input.rejectedByName} (${stepLabel})\nเหตุผล: ${input.reason}`,
+                  pr_doc_num: input.prNo,
+                  is_read: false,
+                },
+              });
+
+              // Telegram notification (fire-and-forget)
+              if (requesterUser.telegramChatId) {
+                const telegramMessage = `❌ <b>PR #${input.prNo} - ถูกปฏิเสธ</b>\n\n` +
+                  `${prMaster.job_name ? `โครงการ: ${prMaster.job_name}\n` : ''}` +
+                  `ปฏิเสธโดย: ${input.rejectedByName} (${stepLabel})\n` +
+                  `เหตุผล: ${input.reason}\n\n` +
+                  `การอนุมัติทั้งหมดถูกล้าง - กรุณาเริ่มกระบวนการอนุมัติใหม่`;
+
+                sendTelegramMessageToUser(requesterUser.telegramChatId, telegramMessage)
+                  .catch(err => console.error('[Notification] Telegram reject send failed:', err));
+              }
+            }
+          }
+        } catch (notifyError) {
+          console.error('[Notification] Failed to send rejection notification:', notifyError);
+        }
+      }
+
+      // Audit log
+      const stepLabelMap: Record<string, string> = {
+        cost_center: 'Cost Center (Freeze)',
+        procurement: 'งานจัดซื้อพัสดุ',
+        vpc: 'VP-C',
+      };
+
+      createAuditLog(ctx.db, {
+        userId: input.rejectedByUserId,
+        userName: input.rejectedByName,
+        action: "REJECT_APPROVAL" as AuditAction,
+        tableName: "pr_document_receipt",
+        recordId: String(input.prNo),
+        prNo: input.prNo,
+        newValues: {
+          rejectionStep: input.rejectionStep,
+          rejectionStatus: stepNumber === 3 ? 'frozen' : 'rejected',
+          reason: input.reason,
+        },
+        description: `ปฏิเสธ PR #${input.prNo} (${stepLabelMap[input.rejectionStep]})`,
+        metadata: {
+          rejectedByRole: input.rejectedByRole,
+        },
+        ipAddress: getIpFromContext(ctx),
+      }).catch(console.error);
+
+      return {
+        success: true,
+        rejectionStep: input.rejectionStep,
+        rejectionStatus: stepNumber === 3 ? 'frozen' : 'rejected',
+      };
+    }),
+
   // 🔹 นับจำนวน PR ที่รอการอนุมัติของฉัน
   getMyPendingApprovalsCount: createTableProcedure('pr_approval', 'read')
     .input(z.object({
@@ -592,12 +898,15 @@ export const prApprovalRouter = createTRPCRouter({
           cost_center_approval_at: true,
           procurement_approval_at: true,
           vpc_approval_at: true,
+          rejection_status: true,
         },
       });
 
       let count = 0;
 
       for (const receipt of allReceipts) {
+        // Skip frozen PRs
+        if (receipt.rejection_status === 'frozen') continue;
         // ขั้น 2: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.requester_approval_at && !receipt.line_approval_at) {
           if (hasLinePermission && receipt.ocr_code2 && myLineOcrNames.has(receipt.ocr_code2)) { count++; continue; }
@@ -673,6 +982,7 @@ export const prApprovalRouter = createTRPCRouter({
           procurement_approval_at: true,
           vpc_approval_at: true,
           created_at: true,
+          rejection_status: true,
         },
       });
 
@@ -685,6 +995,8 @@ export const prApprovalRouter = createTRPCRouter({
 
       for (const receipt of allReceipts) {
         if (!receipt.requester_approval_at) continue;
+        // Skip frozen PRs
+        if (receipt.rejection_status === 'frozen') continue;
 
         // ขั้น 2: ต้องมี permission + อยู่ใน ocr_approver (live)
         if (receipt.requester_approval_at && !receipt.line_approval_at) {

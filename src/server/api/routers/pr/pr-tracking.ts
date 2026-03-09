@@ -76,6 +76,30 @@ export const prTrackingRouter = createTRPCRouter({
         console.error('[createTracking] Failed to send Telegram notification:', error);
       }
 
+      // สร้าง In-App Notification ไปหา Manager ทุกคน (คำถามที่ยังไม่ได้ตอบ)
+      try {
+        const managers = await ctx.db.user_production.findMany({
+          where: { role: 'Manager', isActive: true },
+          select: { id: true, name: true },
+        });
+
+        if (managers.length > 0) {
+          await ctx.db.user_notification.createMany({
+            data: managers.map(mgr => ({
+              user_id: mgr.id,
+              type: 'qa_pending',
+              title: `PR #${input.prNo} - มีคำถามใหม่`,
+              message: `คำถาม: ${input.note || '-'}\nถามโดย: ${input.trackedBy || '-'}`,
+              pr_doc_num: input.prNo,
+              is_read: false,
+            })),
+          });
+          console.log(`[Notification] Created qa_pending notification for ${managers.length} managers`);
+        }
+      } catch (error) {
+        console.error('[createTracking] Failed to create manager notifications:', error);
+      }
+
       return tracking;
     }),
 
@@ -182,6 +206,18 @@ export const prTrackingRouter = createTRPCRouter({
       respondedBy: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // ลบ notification qa_pending ของ Manager ทั้งหมดสำหรับ PR นี้ (เพราะมีคำตอบแล้ว)
+      try {
+        const deleted = await ctx.db.user_notification.deleteMany({
+          where: { type: 'qa_pending', pr_doc_num: input.prNo },
+        });
+        if (deleted.count > 0) {
+          console.log(`[Notification] Deleted ${deleted.count} qa_pending notifications for PR #${input.prNo}`);
+        }
+      } catch (error) {
+        console.error('[createTrackingResponse] Failed to delete qa_pending notifications:', error);
+      }
+
       const response = await ctx.db.tracking_response_log.create({
         data: {
           tracking_id: input.trackingId,

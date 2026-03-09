@@ -62,6 +62,11 @@ export default function Sidebar() {
       permission: { table: "receive_good", action: "read" },
     },
     {
+      name: "GR Tracking",
+      path: "/gr-tracking",
+      icon: "📦",
+    },
+    {
       name: "Help",
       path: "/pr-help",
       icon: "❓",

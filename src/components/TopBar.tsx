@@ -54,7 +54,11 @@ export default function TopBar() {
     { enabled: !!user?.id, refetchInterval: 30000 }
   );
 
-  const markAsReadMutation = api.notification.markAsRead.useMutation();
+  const markAsReadMutation = api.notification.markAsRead.useMutation({
+    onSuccess: () => {
+      void utils.notification.getMyNotifications.invalidate();
+    },
+  });
   const utils = api.useUtils();
   const deleteReadMutation = api.notification.deleteReadNotifications.useMutation({
     onSuccess: () => {
@@ -65,7 +69,7 @@ export default function TopBar() {
   // รวม pending approvals กับ notifications
   type NotificationItem = {
     id: string;
-    type: 'approval' | 'goods_ready' | 'qa_answered';
+    type: 'approval' | 'goods_ready' | 'qa_answered' | 'approval_rejected' | 'qa_pending';
     title: string;
     subtitle?: string;
     prNo?: number;
@@ -93,7 +97,10 @@ export default function TopBar() {
     // Add notifications (goods_ready, qa_answered, etc.)
     myNotifications.forEach((notif: (typeof myNotifications)[number]) => {
       // Map type จาก database ไป type ที่ใช้ใน frontend
-      const notifType = notif.type === 'qa_answered' ? 'qa_answered' : 'goods_ready';
+      const notifType = notif.type === 'qa_answered' ? 'qa_answered'
+        : notif.type === 'approval_rejected' ? 'approval_rejected'
+        : notif.type === 'qa_pending' ? 'qa_pending'
+        : 'goods_ready';
       notifications.push({
         id: `notif-${notif.id}`,
         type: notifType,
@@ -212,6 +219,8 @@ export default function TopBar() {
     if (item.prNo) {
       if (item.type === 'approval') {
         void router.push(`/pr-approval?prNo=${item.prNo}`);
+      } else if (item.type === 'approval_rejected' || item.type === 'qa_pending' || item.type === 'qa_answered') {
+        void router.push(`/pr-tracking?prNo=${item.prNo}`);
       } else if (item.type === 'goods_ready') {
         void router.push(`/receive-good`);
       } else {
@@ -303,6 +312,10 @@ export default function TopBar() {
                             <div className="flex items-center gap-2">
                               {item.type === 'approval' ? (
                                 <span className="text-orange-500 text-sm">🔔</span>
+                              ) : item.type === 'approval_rejected' ? (
+                                <span className="text-red-500 text-sm">❌</span>
+                              ) : item.type === 'qa_pending' ? (
+                                <span className="text-orange-500 text-sm">❓</span>
                               ) : item.type === 'qa_answered' ? (
                                 <span className="text-blue-500 text-sm">💬</span>
                               ) : (
@@ -313,6 +326,8 @@ export default function TopBar() {
                             {item.subtitle && (
                               <div className={`text-xs mt-0.5 truncate ${
                                 item.type === 'approval' ? 'text-orange-600' :
+                                item.type === 'approval_rejected' ? 'text-red-600' :
+                                item.type === 'qa_pending' ? 'text-orange-600' :
                                 item.type === 'qa_answered' ? 'text-blue-600' : 'text-gray-500'
                               }`}>
                                 {item.subtitle}

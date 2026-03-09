@@ -82,6 +82,16 @@ function PRTrackingContent() {
   // OCR Code lookup map (ocr_code2 -> ชื่อแผนก)
   const [ocrCodeMap, setOcrCodeMap] = useState<Map<string, string>>(new Map());
 
+  // อ่าน query param prNo (จาก notification click)
+  useEffect(() => {
+    const qPrNo = router.query.prNo;
+    if (qPrNo && typeof qPrNo === 'string') {
+      setExactPRNo(qPrNo);
+      // ล้าง query param จาก URL (ไม่ให้ค้างอยู่)
+      void router.replace('/pr-tracking', undefined, { shallow: true });
+    }
+  }, [router.query.prNo]);
+
   // Fetch OCR codes for tooltip (ocr_code -> ชื่อแผนก mapping)
   useEffect(() => {
     if (!user) return; // รอให้ login ก่อน

@@ -5,6 +5,7 @@ import { useMultipleActionPermissions } from "~/hooks/usePermission";
 import CanAccess, { NoPermissionModal } from "./CanAccess";
 import PODetailModal from "./PODetailModal";
 import WODetailModal from "./WODetailModal";
+import { GRDetailModalByDocNum } from "./GRDetailModal";
 
 interface PRDetailModalProps {
   prNo: number;
@@ -55,6 +56,9 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
 
   // State สำหรับเปิด WO Detail Modal
   const [selectedWoNo, setSelectedWoNo] = useState<number | null>(null);
+
+  // State สำหรับเปิด GR Detail Modal
+  const [selectedGrDocNum, setSelectedGrDocNum] = useState<string | null>(null);
 
   // รีเซ็ต state เมื่อปิด modal
   useEffect(() => {
@@ -548,165 +552,198 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">สถานะ</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">PO</th>
                             <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">รายละเอียด PO</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">GR (ใบรับของ)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 bg-white">
-                          {prData.lines.map((line: any) =>
-                            line.po_list && line.po_list.length > 0 ? (
-                              line.po_list.map((po: any, poIndex: number) => (
-                                <tr key={`${line.line_id}-${poIndex}`} className="hover:bg-gray-50">
-                                  {poIndex === 0 && (
-                                    <>
-                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm text-gray-900">
-                                        #{line.line_num}
+                          {prData.lines.map((line: any) => {
+                            const poCount = line.po_list?.length || 0;
+                            const totalRowSpan = poCount || 1;
+
+                            return (
+                              <Fragment key={line.line_id}>
+                                {poCount > 0 ? (
+                                  line.po_list.map((po: any, poIndex: number) => (
+                                    <tr key={`${line.line_id}-${poIndex}`} className="hover:bg-gray-50">
+                                      {poIndex === 0 && (
+                                        <>
+                                          <td rowSpan={totalRowSpan} className="whitespace-nowrap px-3 py-2 text-sm text-gray-900">
+                                            #{line.line_num}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="px-3 py-2 text-sm text-gray-600">
+                                            {line.item_code || "-"}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="px-3 py-2 text-sm text-gray-600">
+                                            <div className="max-w-xs truncate" title={line.description}>
+                                              {line.description}
+                                            </div>
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="whitespace-nowrap px-3 py-2 text-sm">
+                                            {line.ocr_code2 && (
+                                              <span
+                                                className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
+                                                title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
+                                              >
+                                                {line.ocr_code2}
+                                              </span>
+                                            )}
+                                            {!line.ocr_code2 && <span className="text-gray-400">-</span>}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="whitespace-nowrap px-3 py-2 text-sm">
+                                            {line.ocr_code4 && (
+                                              <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
+                                                {line.ocr_code4}
+                                              </span>
+                                            )}
+                                            {!line.ocr_code4 && <span className="text-gray-400">-</span>}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="px-3 py-2 text-sm text-gray-600">
+                                            {line.project ? (
+                                              <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
+                                                {line.project}
+                                              </span>
+                                            ) : (
+                                              <span className="text-gray-400">-</span>
+                                            )}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
+                                            {formatNumber(line.quantity)} {line.unit_msr || ""}
+                                          </td>
+                                          <td rowSpan={totalRowSpan} className="whitespace-nowrap px-3 py-2 text-sm">
+                                            <span className={`inline-block rounded px-2 py-1 text-xs ${
+                                              line.line_status === "O"
+                                                ? "bg-green-100 text-green-800"
+                                                : "bg-gray-100 text-gray-800"
+                                            }`}>
+                                              {line.line_status === "O" ? "Open" : "Closed"}
+                                            </span>
+                                          </td>
+                                        </>
+                                      )}
+                                      <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                        {canDo('po_detail.read') ? (
+                                          <button
+                                            onClick={() => handleOpenPoModal(po.po_doc_num)}
+                                            className="font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition"
+                                          >
+                                            PO #{po.po_doc_num}
+                                          </button>
+                                        ) : (
+                                          <span
+                                            className="font-semibold text-gray-400 cursor-not-allowed"
+                                            title="คุณไม่มีสิทธิ์ดู PO"
+                                          >
+                                            PO #{po.po_doc_num}
+                                          </span>
+                                        )}
+                                        <div className="text-xs text-gray-500">
+                                          {po.po_status === "O" ? "Open" : "Closed"}
+                                        </div>
+                                        {poInfoMap && poInfoMap.get && poInfoMap.get(po.po_doc_num) && (
+                                          <div className="text-xs text-green-600 font-medium">
+                                            ออกเมื่อ: {formatDate(poInfoMap.get(po.po_doc_num).po_doc_date)}
+                                          </div>
+                                        )}
                                       </td>
-                                      <td rowSpan={line.po_list.length} className="px-3 py-2 text-sm text-gray-600">
-                                        {line.item_code || "-"}
-                                      </td>
-                                      <td rowSpan={line.po_list.length} className="px-3 py-2 text-sm text-gray-600">
-                                        <div className="max-w-xs truncate" title={line.description}>
-                                          {line.description}
+                                      <td className="px-3 py-2 text-sm text-gray-600">
+                                        <div className="line-clamp-2 max-w-xs" title={po.po_description || "-"}>
+                                          {po.po_description || "-"}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          จำนวน: {formatNumber(po.po_quantity)} {po.po_unit || ""}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          ครบกำหนด: {formatDate(po.po_due_date)}
                                         </div>
                                       </td>
-                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
-                                        {line.ocr_code2 && (
-                                          <span
-                                            className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
-                                            title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
-                                          >
-                                            {line.ocr_code2}
-                                          </span>
-                                        )}
-                                        {!line.ocr_code2 && <span className="text-gray-400">-</span>}
+                                      <td className="px-3 py-2 text-sm align-top">
+                                        {(() => {
+                                          const matchedGRs = (line.gr_list || []).filter((gr: any) =>
+                                            gr.po_doc_num === po.po_doc_num && gr.po_line_num === po.po_line_num
+                                          );
+                                          if (matchedGRs.length === 0) return <span className="text-xs text-gray-400">-</span>;
+                                          return (
+                                            <div className="space-y-2">
+                                              {matchedGRs.map((gr: any, gi: number) => (
+                                                <div key={gi} className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                                                  <button
+                                                    onClick={() => setSelectedGrDocNum(gr.grpo_doc_num)}
+                                                    className="cursor-pointer font-semibold text-emerald-700 hover:underline"
+                                                  >
+                                                    {gr.grpo_doc_num}
+                                                  </button>
+                                                  <div className="text-emerald-600">วันที่: {formatDate(gr.doc_date)}</div>
+                                                  <div className="text-emerald-600">ผู้รับ: {gr.user_name || '-'}</div>
+                                                  <div className="text-emerald-600">จำนวน: {formatNumber(gr.quantity)} {gr.unit_msr || ''}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          );
+                                        })()}
                                       </td>
-                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
-                                        {line.ocr_code4 && (
-                                          <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
-                                            {line.ocr_code4}
-                                          </span>
-                                        )}
-                                        {!line.ocr_code4 && <span className="text-gray-400">-</span>}
-                                      </td>
-                                      <td rowSpan={line.po_list.length} className="px-3 py-2 text-sm text-gray-600">
-                                        {line.project ? (
-                                          <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
-                                            {line.project}
-                                          </span>
-                                        ) : (
-                                          <span className="text-gray-400">-</span>
-                                        )}
-                                      </td>
-                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
-                                        {formatNumber(line.quantity)} {line.unit_msr || ""}
-                                      </td>
-                                      <td rowSpan={line.po_list.length} className="whitespace-nowrap px-3 py-2 text-sm">
-                                        <span className={`inline-block rounded px-2 py-1 text-xs ${
-                                          line.line_status === "O"
-                                            ? "bg-green-100 text-green-800"
-                                            : "bg-gray-100 text-gray-800"
-                                        }`}>
-                                          {line.line_status === "O" ? "Open" : "Closed"}
-                                        </span>
-                                      </td>
-                                    </>
-                                  )}
-                                  <td className="whitespace-nowrap px-3 py-2 text-sm">
-                                    {canDo('po_detail.read') ? (
-                                      <button
-                                        onClick={() => handleOpenPoModal(po.po_doc_num)}
-                                        className="font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition"
-                                      >
-                                        PO #{po.po_doc_num}
-                                      </button>
-                                    ) : (
-                                      <span
-                                        className="font-semibold text-gray-400 cursor-not-allowed"
-                                        title="คุณไม่มีสิทธิ์ดู PO"
-                                      >
-                                        PO #{po.po_doc_num}
-                                      </span>
-                                    )}
-                                    <div className="text-xs text-gray-500">
-                                      {po.po_status === "O" ? "Open" : "Closed"}
-                                    </div>
-                                    {poInfoMap && poInfoMap.get && poInfoMap.get(po.po_doc_num) && (
-                                      <div className="text-xs text-green-600 font-medium">
-                                        ออกเมื่อ: {formatDate(poInfoMap.get(po.po_doc_num).po_doc_date)}
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr className="bg-orange-50">
+                                    <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-900">
+                                      #{line.line_num}
+                                    </td>
+                                    <td className="px-3 py-2 text-sm text-gray-600">
+                                      {line.item_code || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-sm text-gray-600">
+                                      <div className="max-w-xs truncate" title={line.description}>
+                                        {line.description}
                                       </div>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-600">
-                                    <div className="max-w-xs truncate" title={po.po_description || "-"}>
-                                      {po.po_description || "-"}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      จำนวน: {formatNumber(po.po_quantity)} {po.po_unit || ""}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      ครบกำหนด: {formatDate(po.po_due_date)}
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr key={line.line_id} className="bg-orange-50">
-                                <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-900">
-                                  #{line.line_num}
-                                </td>
-                                <td className="px-3 py-2 text-sm text-gray-600">
-                                  {line.item_code || "-"}
-                                </td>
-                                <td className="px-3 py-2 text-sm text-gray-600">
-                                  <div className="max-w-xs truncate" title={line.description}>
-                                    {line.description}
-                                  </div>
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-2 text-sm">
-                                  {line.ocr_code2 && (
-                                    <span
-                                      className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
-                                      title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
-                                    >
-                                      {line.ocr_code2}
-                                    </span>
-                                  )}
-                                  {!line.ocr_code2 && <span className="text-gray-400">-</span>}
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-2 text-sm">
-                                  {line.ocr_code4 && (
-                                    <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
-                                      {line.ocr_code4}
-                                    </span>
-                                  )}
-                                  {!line.ocr_code4 && <span className="text-gray-400">-</span>}
-                                </td>
-                                <td className="px-3 py-2 text-sm text-gray-600">
-                                  {line.project ? (
-                                    <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
-                                      {line.project}
-                                    </span>
-                                  ) : (
-                                    <span className="text-gray-400">-</span>
-                                  )}
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
-                                  {formatNumber(line.quantity)} {line.unit_msr || ""}
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-2 text-sm">
-                                  <span className={`inline-block rounded px-2 py-1 text-xs ${
-                                    line.line_status === "O"
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-gray-100 text-gray-800"
-                                  }`}>
-                                    {line.line_status === "O" ? "Open" : "Closed"}
-                                  </span>
-                                </td>
-                                <td colSpan={2} className="px-3 py-2 text-center text-sm text-orange-600">
-                                  <span className="font-semibold">⚠ ยังไม่มี PO</span>
-                                </td>
-                              </tr>
-                            )
-                          )}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                      {line.ocr_code2 && (
+                                        <span
+                                          className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 cursor-help"
+                                          title={ocrCodeMap.get(line.ocr_code2) || line.ocr_code2}
+                                        >
+                                          {line.ocr_code2}
+                                        </span>
+                                      )}
+                                      {!line.ocr_code2 && <span className="text-gray-400">-</span>}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                      {line.ocr_code4 && (
+                                        <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800">
+                                          {line.ocr_code4}
+                                        </span>
+                                      )}
+                                      {!line.ocr_code4 && <span className="text-gray-400">-</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-sm text-gray-600">
+                                      {line.project ? (
+                                        <span className="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800" title={line.project}>
+                                          {line.project}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-400">-</span>
+                                      )}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
+                                      {formatNumber(line.quantity)} {line.unit_msr || ""}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-sm">
+                                      <span className={`inline-block rounded px-2 py-1 text-xs ${
+                                        line.line_status === "O"
+                                          ? "bg-green-100 text-green-800"
+                                          : "bg-gray-100 text-gray-800"
+                                      }`}>
+                                        {line.line_status === "O" ? "Open" : "Closed"}
+                                      </span>
+                                    </td>
+                                    <td colSpan={3} className="px-3 py-2 text-center text-sm text-orange-600">
+                                      <span className="font-semibold">⚠ ยังไม่มี PO</span>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1237,6 +1274,15 @@ export default function PRDetailModal({ prNo, isOpen, onClose, hideTrackingButto
           woNo={selectedWoNo}
           isOpen={!!selectedWoNo}
           onClose={() => setSelectedWoNo(null)}
+        />
+      )}
+
+      {/* GR Detail Modal (ซ้อนทับ) */}
+      {selectedGrDocNum && (
+        <GRDetailModalByDocNum
+          grpoDocNum={selectedGrDocNum}
+          isOpen={!!selectedGrDocNum}
+          onClose={() => setSelectedGrDocNum(null)}
         />
       )}
 
