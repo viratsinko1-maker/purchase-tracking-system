@@ -27,16 +27,24 @@ export default async function handler(
       return res.status(400).json({ error: 'Missing file path parameter' });
     }
 
-    // แปลง file:// URL เป็น UNC path
+    // แปลง file:// URL เป็น local path (รองรับทั้ง Windows + Docker/Linux)
     let uncPath = filePath;
 
-    // แปลง file://10.1.1.199/... เป็น \\10.1.1.199\...
     if (uncPath.startsWith('file://')) {
-      uncPath = uncPath.replace('file://', '\\\\').replace(/\//g, '\\');
+      if (process.platform === 'win32') {
+        // Windows: file://10.1.1.199/... → \\10.1.1.199\...
+        uncPath = uncPath.replace('file://', '\\\\').replace(/\//g, '\\');
+      } else {
+        // Linux/Docker: file://10.1.1.199/b1_shr/... → /mnt/b1_shr/...
+        uncPath = uncPath.replace('file://10.1.1.199/b1_shr', '/mnt/b1_shr');
+      }
     }
-    // แปลง //10.1.1.199/... เป็น \\10.1.1.199\...
     else if (uncPath.startsWith('//')) {
-      uncPath = uncPath.replace('//', '\\\\').replace(/\//g, '\\');
+      if (process.platform === 'win32') {
+        uncPath = uncPath.replace('//', '\\\\').replace(/\//g, '\\');
+      } else {
+        uncPath = uncPath.replace('//10.1.1.199/b1_shr', '/mnt/b1_shr');
+      }
     }
 
     // Debug logging
